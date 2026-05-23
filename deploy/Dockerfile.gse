@@ -1,0 +1,29 @@
+FROM python:3.12-slim AS base
+WORKDIR /app
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# Workspace root
+COPY pyproject.toml uv.lock* ./
+COPY .python-version ./
+
+# Core library
+COPY core/ core/
+
+# GSE domain
+COPY domains/gse/ domains/gse/
+
+# Install (frozen) production dependencies for the gse-mcp package
+RUN uv sync --package gse-mcp --frozen --no-dev || uv sync --package gse-mcp --no-dev
+
+# Migrations (alembic.ini lives inside alembic/)
+COPY alembic/ alembic/
+
+# Entrypoint dispatches based on GSE_MCP_TRANSPORT and runs migrations for HTTP.
+COPY deploy/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint.sh"]

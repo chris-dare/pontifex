@@ -1,0 +1,22 @@
+app = "mcp-gse"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "deploy/Dockerfile.gse"
+
+[env]
+  GSE_MCP_TRANSPORT = "streamable-http"
+  GSE_MCP_LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+[[http_service.checks]]
+  path = "/health/ready"
+  interval = "15s"
+  timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

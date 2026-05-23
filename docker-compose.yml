@@ -1,0 +1,55 @@
+services:
+  gse:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.gse
+    ports:
+      - "8080:8080"
+    environment:
+      GSE_MCP_REDIS_URL: redis://redis:6379/0
+      GSE_MCP_DATABASE_URL: postgresql+asyncpg://mcp:mcp@postgres:5432/mcp_platform
+      GSE_MCP_LOG_LEVEL: DEBUG
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/live', timeout=3)"
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mcp
+      POSTGRES_PASSWORD: mcp
+      POSTGRES_DB: mcp_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp -d mcp_platform"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+volumes:
+  pgdata:

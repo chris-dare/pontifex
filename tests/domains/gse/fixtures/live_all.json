@@ -1,0 +1,6 @@
+[
+  {"name": "MTN", "price": 25.50, "change": 0.72, "volume": 374476},
+  {"name": "GCB", "price": 5.10, "change": -0.10, "volume": 12000},
+  {"name": "EGH", "price": 8.20, "change": 0.00, "volume": 4500},
+  {"name": "GOIL", "price": 1.85, "change": 0.05, "volume": 22000}
+]

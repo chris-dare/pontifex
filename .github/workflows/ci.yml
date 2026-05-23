@@ -23,7 +23,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync --all-extras --group dev
@@ -48,7 +48,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync --all-extras --group dev
@@ -75,7 +75,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Audit dependencies for vulnerabilities
         run: uv audit --preview
@@ -95,7 +95,58 @@ jobs:
             --config p/owasp-top-ten \
             --config p/secrets \
             --error \
-            src/
+            core/ domains/
+
+  docker-smoke:
+    name: Docker integration smoke test
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start stack
+        run: docker compose up -d --build --wait --wait-timeout 60
+
+      - name: Health checks
+        run: |
+          curl -fsS http://localhost:8080/health/live | jq -e '.status == "ok"'
+          curl -fsS http://localhost:8080/health/ready | jq -e '.internal_db.healthy == true'
+
+      - name: Provision test API key
+        run: |
+          KEY_HASH=$(echo -n "sk_test_ci" | sha256sum | cut -d' ' -f1)
+          docker compose exec -T postgres psql -U mcp -d mcp_platform -c "
+            INSERT INTO core.api_keys (key_id, key_hash, owner_id, owner_label, scopes, rate_limit_rpm, is_active)
+            VALUES ('key_ci', '${KEY_HASH}', 'usr_ci', 'CI smoke test', ARRAY['gse:*:*'], 120, true)
+            ON CONFLICT (key_id) DO NOTHING;
+          "
+
+      - name: MCP initialize
+        run: |
+          curl -fsS http://localhost:8080/mcp \
+            -H "Authorization: Bearer sk_test_ci" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"0.1.0"}}}' \
+          | jq -e '.result.serverInfo.name == "gse-mcp"'
+
+      - name: MCP tools/list
+        run: |
+          TOOLS=$(curl -fsS http://localhost:8080/mcp \
+            -H "Authorization: Bearer sk_test_ci" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
+          echo "$TOOLS" | jq .
+          TOOL_COUNT=$(echo "$TOOLS" | jq '.result.tools | length')
+          if [ "$TOOL_COUNT" -lt 5 ]; then
+            echo "::error::Expected at least 5 tools, got $TOOL_COUNT"
+            exit 1
+          fi
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail 50
 
   secret-scan:
     name: Secret scanning (Gitleaks)

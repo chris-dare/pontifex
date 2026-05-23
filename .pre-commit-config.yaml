@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.9
+    hooks:
+      # Run the formatter first
+      - id: ruff-format
+      # Then lint (auto-fix safe fixes, fail if any non-fixable violations remain)
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (type check)
+        language: system
+        entry: uv run ty check core/ domains/
+        pass_filenames: false
+        types: [python]

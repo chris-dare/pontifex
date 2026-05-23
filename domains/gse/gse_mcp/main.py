@@ -20,6 +20,11 @@ from gse_mcp.config import GSESettings
 from gse_mcp.data import GSEDataService
 from gse_mcp.tools import register_gse_tools
 
+_INSTRUCTIONS = (
+    "Ghana Stock Exchange market data — live prices, stock history, "
+    "company profiles, and market summaries."
+)
+
 settings = GSESettings()
 
 _adapters: list[DataAdapter] = [KwayisiAdapter(settings), InternalDBAdapter(settings)]
@@ -50,13 +55,19 @@ else:
         settings=settings,
         register_tools=_register,
         health_check=manager.health_summary,
+        instructions=_INSTRUCTIONS,
     )
 
 
 def main() -> None:
     """Script entrypoint. Selects transport based on settings."""
     if settings.transport == "stdio":
-        run_mcp_stdio(domain_name="gse", settings=settings, register_tools=_register)
+        run_mcp_stdio(
+            domain_name="gse",
+            settings=settings,
+            register_tools=_register,
+            instructions=_INSTRUCTIONS,
+        )
     else:
         import uvicorn
 

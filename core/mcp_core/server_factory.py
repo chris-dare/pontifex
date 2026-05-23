@@ -29,6 +29,8 @@ def create_mcp_http_app(
     settings: CoreSettings,
     register_tools: Callable[[FastMCP, AuditWriter], None],
     health_check: Callable[[], Awaitable[dict[str, Any]]],
+    *,
+    instructions: str = "",
 ) -> FastAPI:
     """Build FastAPI hosting a FastMCP Streamable HTTP server.
 
@@ -39,6 +41,7 @@ def create_mcp_http_app(
     audit: AuditWriter = DbAuditWriter(settings.database_url)
     mcp_server = FastMCP(
         name=f"{domain_name}-mcp",
+        instructions=instructions,
         stateless_http=True,
         json_response=True,
     )
@@ -79,6 +82,8 @@ def run_mcp_stdio(
     domain_name: str,
     settings: CoreSettings,
     register_tools: Callable[[FastMCP, AuditWriter], None],
+    *,
+    instructions: str = "",
 ) -> None:
     """Blocking stdio runner. Loads identity from settings into a ContextVar."""
     identity = CallerIdentity(
@@ -91,7 +96,7 @@ def run_mcp_stdio(
     )
     set_stdio_caller(identity)
 
-    mcp_server = FastMCP(name=f"{domain_name}-mcp")
+    mcp_server = FastMCP(name=f"{domain_name}-mcp", instructions=instructions)
     register_tools(mcp_server, NoopAuditWriter())
     asyncio.run(mcp_server.run_stdio_async())
 

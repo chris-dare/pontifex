@@ -1,0 +1,22 @@
+{
+  "capital": 383980,
+  "company": {
+    "address": "P. O. Box 123, Accra",
+    "directors": [
+      {"name": "Kofi Abanga", "position": "Chairman"},
+      {"name": "Ama Nantwie", "position": null}
+    ],
+    "email": "abc@example.com",
+    "facsimile": "+233 (302) 123 456",
+    "industry": "Mobile Telecommunications",
+    "name": "MTN Ghana",
+    "sector": "Technology",
+    "telephone": "+233 (302) 123 789",
+    "website": "www.mtn.com.gh"
+  },
+  "dps": 0.07,
+  "eps": 0.14,
+  "name": "MTN",
+  "price": 25.50,
+  "shares": 36500
+}

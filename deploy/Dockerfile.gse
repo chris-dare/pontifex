@@ -17,12 +17,13 @@ COPY domains/gse/ domains/gse/
 # Install (frozen) production dependencies for the gse-mcp package
 RUN uv sync --package gse-mcp --frozen --no-dev || uv sync --package gse-mcp --no-dev
 
-# Migrations
-COPY alembic.ini alembic.ini
+# Migrations (alembic.ini lives inside alembic/)
 COPY alembic/ alembic/
+
+# Entrypoint dispatches based on GSE_MCP_TRANSPORT and runs migrations for HTTP.
+COPY deploy/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
-# Entrypoint reads GSE_MCP_TRANSPORT and dispatches to streamable-http (uvicorn)
-# or stdio (mcp.run_stdio_async). Default is streamable-http.
-CMD ["uv", "run", "--package", "gse-mcp", "python", "-m", "gse_mcp.main"]
+ENTRYPOINT ["/entrypoint.sh"]

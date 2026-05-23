@@ -1,0 +1,22 @@
+# Run the GSE MCP server in stdio mode (no Postgres / Redis required).
+#
+# Usage (matches the Claude Desktop pattern):
+#   docker compose -f docker-compose.stdio.yml run --rm gse
+#
+# The container reads MCP JSON-RPC on stdin and writes responses to stdout.
+# The wildcard `gse:*:*` scope is preloaded so every tool is callable.
+
+services:
+  gse:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.gse
+    stdin_open: true
+    tty: false
+    environment:
+      GSE_MCP_TRANSPORT: stdio
+      GSE_MCP_STDIO_KEY_ID: local-dev
+      GSE_MCP_STDIO_OWNER_ID: local-dev
+      GSE_MCP_STDIO_OWNER_LABEL: "Local stdio"
+      GSE_MCP_STDIO_SCOPES: "gse:*:*"
+      GSE_MCP_LOG_LEVEL: INFO

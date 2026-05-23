@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   gse:
     build:
@@ -12,13 +10,20 @@ services:
       GSE_MCP_DATABASE_URL: postgresql+asyncpg://mcp:mcp@postgres:5432/mcp_platform
       GSE_MCP_LOG_LEVEL: DEBUG
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
 
   postgres:
     image: postgres:16-alpine
@@ -30,6 +35,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp -d mcp_platform"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
 
 volumes:
   pgdata:

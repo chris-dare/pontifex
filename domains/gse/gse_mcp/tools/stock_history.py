@@ -1,41 +1,44 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from typing import Any
+
+from mcp.server.fastmcp import Context, FastMCP
+from mcp_core.audit import AuditWriter
+from mcp_core.tool_runtime import InvalidInput, tool_runtime
 
 from gse_mcp.data import AllSourcesUnavailable, GSEDataService
-from gse_mcp.tools._helpers import (
-    invalid_input,
-    require_scope,
-    sources_unavailable_error,
-    tool_response,
-)
+from gse_mcp.tools._helpers import DOMAIN, envelope
+
+DESCRIPTION = "Get historical end-of-day prices for a GSE-listed stock."
 
 
-class StockHistoryParams(BaseModel):
-    symbol: str = Field(..., description="GSE ticker symbol.")
-    days: int = Field(default=30, ge=1, le=365)
+def register(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> None:
+    @mcp.tool(name="gse_get_stock_history", description=DESCRIPTION, structured_output=False)
+    @tool_runtime(
+        domain=DOMAIN,
+        tool_name="gse_get_stock_history",
+        resource="stock_history",
+        action="read",
+        audit=audit,
+        source_unavailable_exception=AllSourcesUnavailable,
+    )
+    async def gse_get_stock_history(
+        symbol: str,
+        days: int = 30,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        sym = symbol.strip().upper()
+        if not sym:
+            raise InvalidInput("symbol is required.")
+        if days < 1 or days > 365:
+            raise InvalidInput("days must be between 1 and 365.")
 
+        entries, source, cache_hit = await data_service.get_stock_history(sym, days)
 
-def register(app: FastAPI, data_service: GSEDataService) -> None:
-    @app.post("/tools/gse_get_stock_history")
-    async def gse_get_stock_history(params: StockHistoryParams, request: Request) -> JSONResponse:
-        require_scope(request, "stock_history", "read", params=params)
-
-        symbol = params.symbol.strip().upper()
-        if not symbol:
-            raise invalid_input("symbol is required.")
-
-        try:
-            entries, source, cache_hit = await data_service.get_stock_history(symbol, params.days)
-        except AllSourcesUnavailable as exc:
-            raise sources_unavailable_error(exc) from exc
-
-        return tool_response(
+        return envelope(
             source=source,
             cache_hit=cache_hit,
             payload={
-                "symbol": symbol,
-                "days": params.days,
+                "symbol": sym,
+                "days": days,
                 "entries": [e.model_dump() for e in entries],
             },
         )

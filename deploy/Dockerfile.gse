@@ -23,4 +23,6 @@ COPY alembic/ alembic/
 
 EXPOSE 8080
 
-CMD ["uv", "run", "--package", "gse-mcp", "uvicorn", "gse_mcp.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Entrypoint reads GSE_MCP_TRANSPORT and dispatches to streamable-http (uvicorn)
+# or stdio (mcp.run_stdio_async). Default is streamable-http.
+CMD ["uv", "run", "--package", "gse-mcp", "python", "-m", "gse_mcp.main"]

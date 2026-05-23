@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from mcp.server.fastmcp import FastMCP
+from mcp_core.audit import AuditWriter
 
 from gse_mcp.data import GSEDataService
 from gse_mcp.tools.company_info import register as register_company_info
@@ -8,10 +9,10 @@ from gse_mcp.tools.stock_history import register as register_stock_history
 from gse_mcp.tools.stock_price import register as register_stock_price
 
 
-def register_gse_tools(app: FastAPI, data_service: GSEDataService) -> None:
-    """Register all GSE MCP tools on the FastAPI app at /tools/{tool_name}."""
-    register_live_prices(app, data_service)
-    register_stock_price(app, data_service)
-    register_stock_history(app, data_service)
-    register_market_summary(app, data_service)
-    register_company_info(app, data_service)
+def register_gse_tools(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> None:
+    """Register all GSE MCP tools on the FastMCP server."""
+    register_live_prices(mcp, data_service, audit)
+    register_stock_price(mcp, data_service, audit)
+    register_stock_history(mcp, data_service, audit)
+    register_market_summary(mcp, data_service, audit)
+    register_company_info(mcp, data_service, audit)

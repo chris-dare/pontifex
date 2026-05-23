@@ -20,4 +20,11 @@ class CoreSettings(BaseSettings):
 
     logfire_token: str = ""
 
+    # stdio-mode local identity (only used when transport == "stdio"; see §11.7).
+    # `stdio_scopes` is a comma-separated list of scope patterns, e.g. "gse:*:*".
+    stdio_key_id: str = "local"
+    stdio_owner_id: str = "local"
+    stdio_owner_label: str = "Local stdio"
+    stdio_scopes: str = ""
+
     model_config = SettingsConfigDict(extra="ignore")

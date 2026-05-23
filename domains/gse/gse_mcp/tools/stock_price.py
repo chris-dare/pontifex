@@ -1,38 +1,40 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from typing import Any
+
+from mcp.server.fastmcp import Context, FastMCP
+from mcp_core.audit import AuditWriter
+from mcp_core.tool_runtime import InvalidInput, tool_runtime
 
 from gse_mcp.data import AllSourcesUnavailable, GSEDataService
-from gse_mcp.tools._helpers import (
-    invalid_input,
-    require_scope,
-    sources_unavailable_error,
-    tool_response,
+from gse_mcp.tools._helpers import DOMAIN, envelope
+
+DESCRIPTION = (
+    "Get current price, change, and volume for a specific stock on the Ghana Stock Exchange."
 )
 
 
-class StockPriceParams(BaseModel):
-    symbol: str = Field(..., description="GSE ticker symbol (case-insensitive).")
+def register(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> None:
+    @mcp.tool(name="gse_get_stock_price", description=DESCRIPTION, structured_output=False)
+    @tool_runtime(
+        domain=DOMAIN,
+        tool_name="gse_get_stock_price",
+        resource="stock_price",
+        action="read",
+        audit=audit,
+        source_unavailable_exception=AllSourcesUnavailable,
+    )
+    async def gse_get_stock_price(
+        symbol: str,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        sym = symbol.strip().upper()
+        if not sym:
+            raise InvalidInput("symbol is required.")
 
-
-def register(app: FastAPI, data_service: GSEDataService) -> None:
-    @app.post("/tools/gse_get_stock_price")
-    async def gse_get_stock_price(params: StockPriceParams, request: Request) -> JSONResponse:
-        require_scope(request, "stock_price", "read", params=params)
-
-        symbol = params.symbol.strip().upper()
-        if not symbol:
-            raise invalid_input("symbol is required.")
-
-        try:
-            stock, source, cache_hit = await data_service.get_stock_price(symbol)
-        except AllSourcesUnavailable as exc:
-            raise sources_unavailable_error(exc) from exc
-
+        stock, source, cache_hit = await data_service.get_stock_price(sym)
         if stock is None:
-            raise invalid_input(f"Unknown GSE ticker: {symbol}.")
+            raise InvalidInput(f"Unknown GSE ticker: {sym}.")
 
-        return tool_response(
+        return envelope(
             source=source,
             cache_hit=cache_hit,
             payload={"stock": stock.model_dump()},

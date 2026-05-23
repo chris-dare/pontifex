@@ -18,7 +18,7 @@ The first domain module is **Ghana Stock Exchange (GSE)** market data.
 
 ### 1.2 Constraints
 
-- Python 3.11+ with FastAPI
+- Python 3.12+ with FastAPI
 - API key auth with scope-based permissions; the platform does not manage users, billing, or plans
 - All tool invocations must be logged with caller identity, timestamp, parameters, and response latency
 - External APIs may lack SLAs; the system must tolerate unavailability of any single source
@@ -78,11 +78,18 @@ The MCP platform is a **tool product**. It authenticates API keys, enforces perm
 
 ## 3. Project Structure
 
+Uses [uv workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/) with flat layout — following the convention used by FastAPI, Pydantic, and Pydantic AI.
+
 ```
 mcp-platform/
-├── pyproject.toml                          # Workspace root, defines all packages
+├── pyproject.toml                          # Virtual workspace root (no [project] table)
+├── uv.lock                                # Auto-generated, committed to version control
+├── .python-version                         # e.g. "3.12"
 ├── README.md
+├── CLAUDE.md
+├── MCP_PLATFORM_SOLUTION_DESIGN_v2.md
 ├── docker-compose.yml                      # Dev: all services + Redis + Postgres
+│
 ├── alembic/                                # DB migrations (split by schema)
 │   ├── alembic.ini
 │   ├── env.py                              # Runs core + domain migrations in order
@@ -98,19 +105,19 @@ mcp-platform/
 │               ├── 002_create_historical_prices.py
 │               └── 003_create_cached_prices.py
 │
-├── core/                                   # ── Shared library (mcp_core) ──
-│   ├── pyproject.toml                      # Installable as mcp-core
+├── core/                                   # ── Shared library (mcp-core) ──
+│   ├── pyproject.toml                      # [build-system] uses uv_build
 │   └── mcp_core/
 │       ├── __init__.py
+│       ├── py.typed                        # Type checker marker
 │       ├── server_factory.py               # Creates configured MCP server from parts
-│       │
 │       ├── config.py                       # Base settings all domains inherit
 │       │
 │       ├── auth/
 │       │   ├── __init__.py
 │       │   ├── api_keys.py                 # API key validation + caching
 │       │   ├── identity.py                 # CallerIdentity + resolution from key
-│       │   └── scopes.py                   # Scope matching logic (domain:tool, domain:*)
+│       │   └── scopes.py                   # Scope matching logic (domain:resource:action)
 │       │
 │       ├── adapters/
 │       │   ├── __init__.py
@@ -128,7 +135,7 @@ mcp-platform/
 │       │
 │       ├── models/
 │       │   ├── __init__.py
-│       │   ├── base.py                     # ToolResponse, AuditRecord (Pydantic)
+│       │   ├── base.py                     # ToolResponse, AuditRecord, ToolError (Pydantic)
 │       │   └── db.py                       # SQLAlchemy: audit_log, api_keys
 │       │
 │       ├── observability/
@@ -137,23 +144,26 @@ mcp-platform/
 │       │
 │       └── utils/
 │           ├── __init__.py
-│           ├── circuit_breaker.py           # Generic circuit breaker
-│           └── retry.py                     # Exponential backoff with jitter
+│           ├── circuit_breaker.py          # Generic circuit breaker
+│           └── retry.py                    # Exponential backoff with jitter
 │
 ├── domains/                                # ── Domain modules ──
 │   │
 │   ├── gse/                                # Ghana Stock Exchange
-│   │   ├── pyproject.toml                  # Depends on mcp-core
+│   │   ├── pyproject.toml                  # Depends on mcp-core via workspace source
 │   │   └── gse_mcp/
 │   │       ├── __init__.py
+│   │       ├── py.typed
 │   │       ├── main.py                     # Entrypoint: wires tools + adapters → factory
 │   │       ├── config.py                   # GSE-specific settings (extends base)
+│   │       ├── data.py                     # GSEDataService: cache + adapter orchestration
 │   │       ├── tools/
 │   │       │   ├── __init__.py             # Registers all tools
 │   │       │   ├── live_prices.py
 │   │       │   ├── stock_price.py
 │   │       │   ├── stock_history.py
-│   │       │   └── market_summary.py       # New tools added here as needed
+│   │       │   ├── market_summary.py
+│   │       │   └── company_info.py         # New tools added here as needed
 │   │       ├── adapters/
 │   │       │   ├── __init__.py
 │   │       │   ├── protocol.py             # GSEDataAdapter (extends base DataAdapter)
@@ -163,8 +173,7 @@ mcp-platform/
 │   │       ├── models.py                   # Stock, HistoryEntry, MarketSummary, Equity
 │   │       └── symbol_registry.py          # Dynamic symbol lookup via /equities + cache
 │   │
-│   └── # Future domains follow the same structure:
-│       # domains/{name}/{name}_mcp/ with tools/, adapters/, models.py, config.py, main.py
+│   └── # Future domains: domains/{name}/pyproject.toml + {name}_mcp/
 │
 ├── tests/
 │   ├── conftest.py                         # Shared fixtures: Redis, Postgres, mock clock
@@ -198,6 +207,7 @@ mcp-platform/
 ```
 
 ---
+
 
 ## 4. Core Library
 
@@ -379,7 +389,7 @@ class GSEDataService:
                 await self.cache.set("live:all", {
                     "stocks": [s.model_dump() for s in stocks],
                     "source": adapter.name,
-                }, base_ttl=30)
+                }, ttl_seconds=30)
                 return stocks, adapter.name, False
             except Exception:
                 self.manager.record_failure(adapter.name)
@@ -487,7 +497,6 @@ def create_mcp_app(
       - Transport (stdio or Streamable HTTP based on settings)
       - Auth middleware
       - Audit logging middleware
-      - Rate limiting
       - Health endpoints (/health/live, /health/ready)
       - Logfire (OTEL-based tracing, metrics, dashboards)
     """
@@ -517,6 +526,25 @@ def create_mcp_app(
     register_tools(app)
 
     return app
+```
+
+Each domain's `config.py` extends `CoreSettings` with domain-specific fields:
+
+```python
+# domains/gse/gse_mcp/config.py
+
+from mcp_core.config import CoreSettings
+
+
+class GSESettings(CoreSettings):
+    kwayisi_base_url: str = "https://dev.kwayisi.org/apis/gse"
+    kwayisi_timeout_seconds: float = 8.0
+    kwayisi_max_retries: int = 3
+
+    gse_official_base_url: str = ""
+    gse_official_api_key: str = ""
+
+    model_config = {"env_prefix": "GSE_MCP_"}
 ```
 
 Each domain's `main.py` becomes ~30 lines:
@@ -1690,22 +1718,29 @@ Each domain gets its own Dockerfile. They all follow the same pattern:
 ```dockerfile
 # deploy/Dockerfile.gse
 
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 WORKDIR /app
 
-# Install core library
-COPY core/ core/
-RUN pip install --no-cache-dir ./core
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Install domain module
+# Copy workspace root config
+COPY pyproject.toml uv.lock ./
+
+# Copy core library
+COPY core/ core/
+
+# Copy domain module
 COPY domains/gse/ domains/gse/
-RUN pip install --no-cache-dir ./domains/gse
+
+# Install dependencies
+RUN uv sync --package gse-mcp --frozen --no-dev
 
 # Migrations
 COPY alembic/ alembic/
 
 EXPOSE 8080
-CMD ["uvicorn", "gse_mcp.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "--package", "gse-mcp", "uvicorn", "gse_mcp.main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
 ### 17.2 Docker Compose (Local Development)
@@ -1833,7 +1868,7 @@ To connect additional domain servers later, add each as a separate MCP server en
 ### 18.1 Core Unit Tests (`tests/core/`)
 
 - Circuit breaker state transitions (closed → open → half-open → closed)
-- Cache TTL logic with mocked clock (active vs inactive hours)
+- Cache get/set/invalidate with prefix isolation
 - DataSourceManager fallback chain (primary fails → secondary serves)
 - Auth middleware: valid key, expired key, missing scope, revoked key
 - Scope matching: wildcard patterns, exact matches, action-level checks
@@ -1844,7 +1879,7 @@ To connect additional domain servers later, add each as a separate MCP server en
 
 - Mock kwayisi HTTP responses using `respx`
 - Test each tool handler with known inputs and expected outputs
-- Test symbol mapping: kwayisi codes → canonical tickers
+- Test symbol registry: fetch, cache, and lookup via /equities
 - Test market summary derivation from `/live` response
 
 ### 18.3 Integration Tests
@@ -1869,12 +1904,30 @@ To connect additional domain servers later, add each as a separate MCP server en
 ## 19. Dependencies
 
 ```toml
+# pyproject.toml (workspace root — virtual, no [project] table)
+
+[tool.uv.workspace]
+members = ["core", "domains/*"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "testcontainers>=4.0",
+    "locust>=2.28",
+    "ruff>=0.4",
+    "ty>=0.1",
+]
+```
+
+```toml
 # core/pyproject.toml
 
 [project]
 name = "mcp-core"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -1889,6 +1942,13 @@ dependencies = [
     "logfire[fastapi,httpx,redis]>=3.0.0",
     "structlog>=24.0.0",
 ]
+
+[build-system]
+requires = ["uv_build>=0.7"]
+build-backend = "uv_build"
+
+[tool.uv-build]
+module-root = ""
 ```
 
 ```toml
@@ -1897,25 +1957,20 @@ dependencies = [
 [project]
 name = "gse-mcp"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    "mcp-core",        # Local path dependency during dev
+    "mcp-core",
 ]
-```
 
-```toml
-# Root pyproject.toml (dev dependencies + workspace)
+[tool.uv.sources]
+mcp-core = { workspace = true }
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "respx>=0.21",
-    "testcontainers>=4.0",
-    "locust>=2.28",
-    "ruff>=0.4",
-    "ty>=0.1",
-]
+[build-system]
+requires = ["uv_build>=0.7"]
+build-backend = "uv_build"
+
+[tool.uv-build]
+module-root = ""
 ```
 
 ---
@@ -1926,15 +1981,17 @@ To add a new domain, follow these steps:
 
 1. **Create the directory:** `domains/{name}/{name}_mcp/`
 
-2. **Define domain models** in `models.py`. These are the Pydantic objects your tools return.
+2. **Create `pyproject.toml`** with `[build-system]` using `uv_build`, dependency on `mcp-core` via `[tool.uv.sources]`, and `requires-python = ">=3.12"`. The workspace root auto-discovers it via the `domains/*` glob.
 
-3. **Define the adapter protocol** in `adapters/protocol.py`. Extend `mcp_core.adapters.base.DataAdapter` with your domain-specific methods.
+3. **Define domain models** in `models.py`. These are the Pydantic objects your tools return.
 
-4. **Implement adapters.** One per external data source. Each returns your domain models.
+4. **Define the adapter protocol** in `adapters/protocol.py`. Extend `mcp_core.adapters.base.DataAdapter` with your domain-specific methods.
 
-5. **Define tools** in `tools/`. One file per tool. Each tool calls the domain's data service.
+5. **Implement adapters.** One per external data source. Each returns your domain models.
 
-6. **Map tool permissions.** For each tool, define the `domain:resource:action` scope. Strip the verb prefix from the tool name to get the resource, use the verb to determine the action. Document the mapping in the tool file:
+6. **Define tools** in `tools/`. One file per tool. Each tool calls the domain's data service.
+
+7. **Map tool permissions.** For each tool, define the `domain:resource:action` scope. Strip the verb prefix from the tool name to get the resource, use the verb to determine the action. Document the mapping in the tool file:
 
     | Tool | Scope |
     |------|-------|
@@ -1942,19 +1999,19 @@ To add a new domain, follow these steps:
     | `set_price_alert` | `gse:price_alert:write` |
     | `run_backtest` | `gse:backtest:execute` |
 
-7. **Create `config.py`** extending `CoreSettings`. Add domain-specific settings (API URLs, timeouts, active hours). Set `env_prefix` to `{NAME}_MCP_`.
+8. **Create `config.py`** extending `CoreSettings`. Add domain-specific settings (API URLs, timeouts, active hours). Set `env_prefix` to `{NAME}_MCP_`.
 
-8. **Create `main.py`** wiring adapters → DataSourceManager → Cache → DataService → server factory. This should be ~30 lines.
+9. **Create `main.py`** wiring adapters → DataSourceManager → Cache → DataService → server factory. This should be ~30 lines.
 
-9. **Create the database schema** in `alembic/domains/{name}/`. Each migration targets `schema="{name}"`.
+10. **Create the database schema** in `alembic/domains/{name}/`. Each migration targets `schema="{name}"`.
 
-10. **Create a database role** (`mcp_{name}_service`) with the same permission pattern as GSE.
+11. **Create a database role** (`mcp_{name}_service`) with the same permission pattern as GSE.
 
-11. **Write tests** in `tests/domains/{name}/`. Record API fixtures. Mock external calls.
+12. **Write tests** in `tests/domains/{name}/`. Record API fixtures. Mock external calls.
 
-12. **Create Dockerfile** in `deploy/Dockerfile.{name}`.
+13. **Create Dockerfile** in `deploy/Dockerfile.{name}`.
 
-13. **Add to `docker-compose.yml`** with the domain's port and env vars.
+14. **Add to `docker-compose.yml`** with the domain's port and env vars.
 
 The core library, auth, audit, caching, circuit breaker, observability, and health checks require zero changes.
 

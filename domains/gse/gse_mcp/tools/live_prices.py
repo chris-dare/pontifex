@@ -21,7 +21,7 @@ class LivePricesParams(BaseModel):
 def register(app: FastAPI, data_service: GSEDataService) -> None:
     @app.post("/tools/gse_get_live_prices")
     async def gse_get_live_prices(params: LivePricesParams, request: Request) -> JSONResponse:
-        require_scope(request, "live_prices", "read")
+        require_scope(request, "live_prices", "read", params=params)
 
         sector = params.sector.lower()
         sort_by = params.sort_by.lower()

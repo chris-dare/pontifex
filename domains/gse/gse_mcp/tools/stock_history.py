@@ -19,7 +19,7 @@ class StockHistoryParams(BaseModel):
 def register(app: FastAPI, data_service: GSEDataService) -> None:
     @app.post("/tools/gse_get_stock_history")
     async def gse_get_stock_history(params: StockHistoryParams, request: Request) -> JSONResponse:
-        require_scope(request, "stock_history", "read")
+        require_scope(request, "stock_history", "read", params=params)
 
         symbol = params.symbol.strip().upper()
         if not symbol:

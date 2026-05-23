@@ -11,7 +11,7 @@ def setup_logfire(app: Any, domain: str, token: str) -> None:
     Logfire is optional; if the package isn't installed, this is a no-op.
     """
     try:
-        import logfire  # type: ignore
+        import logfire
     except ImportError:
         logger.info("logfire_not_installed", domain=domain)
         return

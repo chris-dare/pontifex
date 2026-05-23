@@ -7,10 +7,13 @@ write to S3. Run nightly via cron.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import structlog
 from mcp_core.config import CoreSettings
 from mcp_core.models.db import AuditLogModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+logger = structlog.get_logger(__name__)
 
 CUTOFF_DAYS = 90
 
@@ -28,7 +31,7 @@ async def main() -> None:
             .all()
         )
         # TODO: write `rows` to Parquet at s3://.../audit/{year}/{month}/...
-        print(f"would export {len(rows)} rows older than {cutoff.isoformat()}")
+        logger.info("audit_export_dryrun", row_count=len(rows), cutoff=cutoff.isoformat())
         await session.execute(delete(AuditLogModel).where(AuditLogModel.timestamp < cutoff))
         await session.commit()
 

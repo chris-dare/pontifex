@@ -6,14 +6,23 @@ from fastapi.responses import JSONResponse
 from mcp_core.auth.identity import CallerIdentity
 from mcp_core.middleware.auth import get_caller
 from mcp_core.models.base import ToolError
+from pydantic import BaseModel
 
 from gse_mcp.data import AllSourcesUnavailable, is_trading_hours
 
 DOMAIN = "gse"
 
 
-def require_scope(request: Request, resource: str, action: str = "read") -> CallerIdentity:
-    """Resolve the caller and enforce a single-resource scope check."""
+def require_scope(
+    request: Request,
+    resource: str,
+    action: str = "read",
+    *,
+    params: BaseModel | None = None,
+) -> CallerIdentity:
+    """Resolve the caller, enforce a single-resource scope check, and stash params for audit."""
+    if params is not None:
+        request.state.tool_params = params.model_dump(mode="json")
     caller = get_caller(request)
     if not caller.can_use_tool(DOMAIN, resource, action):
         raise HTTPException(

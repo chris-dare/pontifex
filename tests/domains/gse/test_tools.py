@@ -167,3 +167,28 @@ def test_company_info_unknown(app_factory):
     _, client = app_factory(["gse:company_info:read"])
     resp = client.post("/tools/gse_get_company_info", json={"symbol": "ZZZ"})
     assert resp.status_code == 400
+
+
+def test_tool_params_stashed_for_audit():
+    """Tool handlers must populate request.state.tool_params for the audit middleware."""
+    adapter = _FakeAdapter()
+    manager = DataSourceManager([adapter])
+    cache = _FakeCache()
+    service = GSEDataService(manager, cache)
+    app = FastAPI()
+    captured: dict = {}
+
+    @app.middleware("http")
+    async def inject_and_capture(request, call_next):
+        request.state.caller = CallerIdentity(
+            key_id="k1", owner_id="o1", owner_label="t", scopes=["gse:*:*"], rate_limit_rpm=60
+        )
+        response = await call_next(request)
+        captured["params"] = getattr(request.state, "tool_params", None)
+        return response
+
+    register_gse_tools(app, service)
+    client = TestClient(app)
+
+    client.post("/tools/gse_get_stock_history", json={"symbol": "GCB", "days": 7})
+    assert captured["params"] == {"symbol": "GCB", "days": 7}

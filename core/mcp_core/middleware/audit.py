@@ -43,6 +43,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         finally:
             elapsed_ms = int((time.monotonic() - start) * 1000)
             caller: CallerIdentity | None = getattr(request.state, "caller", None)
+            tool_params: dict = getattr(request.state, "tool_params", {}) or {}
             data_source = "unknown"
             cache_hit = False
             if response is not None:
@@ -53,6 +54,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             await self._write_audit(
                 tool_name=tool_name,
                 caller=caller,
+                tool_params=tool_params,
                 cache_hit=cache_hit,
                 data_source=data_source,
                 response_ms=elapsed_ms,
@@ -67,6 +69,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         *,
         tool_name: str,
         caller: CallerIdentity | None,
+        tool_params: dict,
         cache_hit: bool,
         data_source: str,
         response_ms: int,
@@ -89,7 +92,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         owner_label=caller.owner_label,
                         transport=caller.transport,
                         tool_name=tool_name,
-                        tool_params={},
+                        tool_params=tool_params,
                         data_source=data_source,
                         cache_hit=cache_hit,
                         response_ms=response_ms,

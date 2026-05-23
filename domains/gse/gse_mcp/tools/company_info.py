@@ -18,7 +18,7 @@ class CompanyInfoParams(BaseModel):
 def register(app: FastAPI, data_service: GSEDataService) -> None:
     @app.post("/tools/gse_get_company_info")
     async def gse_get_company_info(params: CompanyInfoParams, request: Request) -> JSONResponse:
-        require_scope(request, "company_info", "read")
+        require_scope(request, "company_info", "read", params=params)
 
         symbol = params.symbol.strip().upper()
         if not symbol:

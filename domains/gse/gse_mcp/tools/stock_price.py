@@ -18,7 +18,7 @@ class StockPriceParams(BaseModel):
 def register(app: FastAPI, data_service: GSEDataService) -> None:
     @app.post("/tools/gse_get_stock_price")
     async def gse_get_stock_price(params: StockPriceParams, request: Request) -> JSONResponse:
-        require_scope(request, "stock_price", "read")
+        require_scope(request, "stock_price", "read", params=params)
 
         symbol = params.symbol.strip().upper()
         if not symbol:

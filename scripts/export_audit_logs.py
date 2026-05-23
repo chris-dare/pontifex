@@ -23,10 +23,10 @@ async def main() -> None:
 
     async with factory() as session:
         rows = (
-            await session.execute(
-                select(AuditLogModel).where(AuditLogModel.timestamp < cutoff)
-            )
-        ).scalars().all()
+            (await session.execute(select(AuditLogModel).where(AuditLogModel.timestamp < cutoff)))
+            .scalars()
+            .all()
+        )
         # TODO: write `rows` to Parquet at s3://.../audit/{year}/{month}/...
         print(f"would export {len(rows)} rows older than {cutoff.isoformat()}")
         await session.execute(delete(AuditLogModel).where(AuditLogModel.timestamp < cutoff))

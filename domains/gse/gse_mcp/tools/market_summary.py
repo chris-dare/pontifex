@@ -16,9 +16,7 @@ class MarketSummaryParams(BaseModel):
 
 def register(app: FastAPI, data_service: GSEDataService) -> None:
     @app.post("/tools/gse_get_market_summary")
-    async def gse_get_market_summary(
-        params: MarketSummaryParams, request: Request
-    ) -> JSONResponse:
+    async def gse_get_market_summary(params: MarketSummaryParams, request: Request) -> JSONResponse:
         require_scope(request, "market_summary", "read")
 
         try:

@@ -18,6 +18,6 @@ repos:
       - id: ty
         name: ty (type check)
         language: system
-        entry: bash -c 'UV=$(command -v uv || echo /opt/homebrew/bin/uv) && "$UV" run ty check src/'
+        entry: bash -c 'UV=$(command -v uv || echo /opt/homebrew/bin/uv) && "$UV" run ty check core/ domains/'
         pass_filenames: false
         types: [python]

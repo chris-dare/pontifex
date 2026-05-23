@@ -5,8 +5,10 @@ members = ["core", "domains/*"]
 dev-dependencies = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "respx>=0.21",
     "ruff>=0.4",
+    "ty>=0.0.1a1",
 ]
 
 [tool.ruff]

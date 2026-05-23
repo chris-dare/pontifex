@@ -1,18 +1,13 @@
 import hashlib
 import json
 from dataclasses import asdict
-from typing import Protocol
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from mcp_core.auth.identity import CallerIdentity
 from mcp_core.models.db import ApiKeyModel
-
-
-class _RedisLike(Protocol):
-    async def get(self, key: str) -> bytes | None: ...
-    async def setex(self, key: str, ttl: int, value: str) -> object: ...
 
 
 def hash_key(raw_key: str, algorithm: str = "sha256") -> str:
@@ -27,7 +22,7 @@ class APIKeyResolver:
 
     def __init__(
         self,
-        redis_client: _RedisLike,
+        redis_client: Any,
         db_session_factory: async_sessionmaker,
         cache_ttl: int = 300,
         transport: str = "http",
@@ -50,10 +45,7 @@ class APIKeyResolver:
                 select(ApiKeyModel)
                 .where(ApiKeyModel.key_hash == key_hash)
                 .where(ApiKeyModel.is_active.is_(True))
-                .where(
-                    (ApiKeyModel.expires_at.is_(None))
-                    | (ApiKeyModel.expires_at > func.now())
-                )
+                .where((ApiKeyModel.expires_at.is_(None)) | (ApiKeyModel.expires_at > func.now()))
             )
             record = result.scalar_one_or_none()
             if not record:

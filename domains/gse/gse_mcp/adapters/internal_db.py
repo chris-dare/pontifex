@@ -78,10 +78,14 @@ class InternalDBAdapter:
                 .group_by(_CachedEOD.symbol)
                 .subquery()
             )
-            stmt = select(_CachedEOD, _Symbol).join(
-                subq,
-                (_CachedEOD.symbol == subq.c.symbol) & (_CachedEOD.date == subq.c.max_date),
-            ).join(_Symbol, _Symbol.ticker == _CachedEOD.symbol, isouter=True)
+            stmt = (
+                select(_CachedEOD, _Symbol)
+                .join(
+                    subq,
+                    (_CachedEOD.symbol == subq.c.symbol) & (_CachedEOD.date == subq.c.max_date),
+                )
+                .join(_Symbol, _Symbol.ticker == _CachedEOD.symbol, isouter=True)
+            )
             rows = (await session.execute(stmt)).all()
             return [
                 Stock(

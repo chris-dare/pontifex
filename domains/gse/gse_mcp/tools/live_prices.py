@@ -40,7 +40,9 @@ def register(app: FastAPI, data_service: GSEDataService) -> None:
         key = sort_by
         reverse = sort_by in {"price", "change", "volume"}
         stocks = sorted(
-            stocks, key=lambda s: getattr(s, key) if getattr(s, key) is not None else 0, reverse=reverse
+            stocks,
+            key=lambda s: getattr(s, key) if getattr(s, key) is not None else 0,
+            reverse=reverse,
         )
 
         return tool_response(

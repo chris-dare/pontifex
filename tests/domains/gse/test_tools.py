@@ -18,8 +18,22 @@ class _FakeAdapter:
 
     def __init__(self):
         self._stocks = [
-            Stock(symbol="MTN", name="MTN Ghana", price=25.5, change=0.72, change_pct=2.91, volume=374476),
-            Stock(symbol="GCB", name="GCB Bank", price=5.10, change=-0.10, change_pct=-1.92, volume=12000),
+            Stock(
+                symbol="MTN",
+                name="MTN Ghana",
+                price=25.5,
+                change=0.72,
+                change_pct=2.91,
+                volume=374476,
+            ),
+            Stock(
+                symbol="GCB",
+                name="GCB Bank",
+                price=5.10,
+                change=-0.10,
+                change_pct=-1.92,
+                volume=12000,
+            ),
         ]
 
     async def health_check(self) -> bool:
@@ -128,9 +142,7 @@ def test_stock_price_ok(app_factory):
 
 def test_stock_history_ok(app_factory):
     _, client = app_factory(["gse:stock_history:read"])
-    resp = client.post(
-        "/tools/gse_get_stock_history", json={"symbol": "GCB", "days": 10}
-    )
+    resp = client.post("/tools/gse_get_stock_history", json={"symbol": "GCB", "days": 10})
     assert resp.status_code == 200
     body = resp.json()
     assert body["symbol"] == "GCB"

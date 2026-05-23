@@ -23,7 +23,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync --all-extras --group dev
@@ -48,7 +48,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync --all-extras --group dev
@@ -75,7 +75,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Audit dependencies for vulnerabilities
         run: uv audit --preview
@@ -95,7 +95,7 @@ jobs:
             --config p/owasp-top-ten \
             --config p/secrets \
             --error \
-            src/
+            core/ domains/
 
   secret-scan:
     name: Secret scanning (Gitleaks)

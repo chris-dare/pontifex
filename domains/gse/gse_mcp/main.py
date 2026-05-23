@@ -1,3 +1,4 @@
+from mcp_core.adapters.base import DataAdapter
 from mcp_core.adapters.manager import DataSourceManager
 from mcp_core.cache.redis_cache import Cache
 from mcp_core.server_factory import create_mcp_app
@@ -12,7 +13,7 @@ from gse_mcp.tools import register_gse_tools
 settings = GSESettings()
 
 # Adapters, priority-ordered. gse_official is only included when configured.
-_adapters = [KwayisiAdapter(settings), InternalDBAdapter(settings)]
+_adapters: list[DataAdapter] = [KwayisiAdapter(settings), InternalDBAdapter(settings)]
 if settings.gse_official_base_url and settings.gse_official_api_key:
     _adapters.insert(0, GSEOfficialAdapter(settings))
 

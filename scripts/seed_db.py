@@ -28,9 +28,7 @@ async def main() -> None:
 
     async with factory() as session:
         for ticker, name, sector in SEED_SYMBOLS:
-            await session.execute(
-                insert(_Symbol).values(ticker=ticker, name=name, sector=sector)
-            )
+            await session.execute(insert(_Symbol).values(ticker=ticker, name=name, sector=sector))
         await session.commit()
 
         if symbols_only:

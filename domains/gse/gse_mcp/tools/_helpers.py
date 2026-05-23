@@ -58,10 +58,7 @@ def sources_unavailable_error(exc: AllSourcesUnavailable) -> HTTPException:
         status_code=503,
         detail=ToolError(
             error_code="source_unavailable",
-            message=(
-                "All GSE data sources are currently unavailable. "
-                "Retry in 30 seconds."
-            ),
+            message=("All GSE data sources are currently unavailable. Retry in 30 seconds."),
             status=503,
             retry=True,
             retry_after_seconds=30,

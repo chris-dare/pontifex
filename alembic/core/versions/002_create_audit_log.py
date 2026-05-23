@@ -39,9 +39,7 @@ def upgrade() -> None:
         sa.Column("ip_address", INET, nullable=True),
         schema="core",
     )
-    op.create_index(
-        "idx_audit_timestamp", "audit_log", [sa.text("timestamp DESC")], schema="core"
-    )
+    op.create_index("idx_audit_timestamp", "audit_log", [sa.text("timestamp DESC")], schema="core")
     op.create_index(
         "idx_audit_domain", "audit_log", ["domain", sa.text("timestamp DESC")], schema="core"
     )

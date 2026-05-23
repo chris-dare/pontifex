@@ -1,0 +1,1982 @@
+# MCP Platform — Solution Design v2
+
+## 1. Overview
+
+A modular MCP (Model Context Protocol) platform that exposes structured data domains (stock exchanges, fixed income markets, logistics, government services) to AI agents via MCP. Each domain is a self-contained module that plugs into a shared core. The core handles everything domain-agnostic: transport, API key authentication, scope-based permissions, caching, audit logging, circuit breaking, and observability.
+
+Users or upstream platforms issue API keys with fine-grained permission scopes (e.g. `gse:*:*`, `gse:live_prices:read`). The MCP platform enforces those scopes — it does not manage users, billing, or plan tiers. That responsibility belongs to whatever platform sits above it (a SaaS dashboard, an enterprise admin panel, or even a config file for self-hosted deployments).
+
+The first domain module is **Ghana Stock Exchange (GSE)** market data.
+
+### 1.1 Scope
+
+**Phase 1 (GSE only):** Single domain module. API key auth with permission scopes. Open to any upstream platform or direct use.
+
+**Phase 2 (multi-domain):** Add additional domain modules as needed. The architecture supports any number of domains — market data, fixed income, logistics, government services — each deployed as an independent container. Examples used throughout this doc (GFI, NGX) are illustrative; real domains are added when there's a data source and a use case.
+
+**Phase 3 (scale):** Additional domains (non-market verticals), horizontal scaling, cross-domain query support.
+
+### 1.2 Constraints
+
+- Python 3.11+ with FastAPI
+- API key auth with scope-based permissions; the platform does not manage users, billing, or plans
+- All tool invocations must be logged with caller identity, timestamp, parameters, and response latency
+- External APIs may lack SLAs; the system must tolerate unavailability of any single source
+- Each domain module deploys as an independent container for fault isolation
+
+---
+
+## 2. Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Upstream Platform (NOT part of this product)                     │
+│  • SaaS dashboard, enterprise admin panel, or config file       │
+│  • Manages users, billing, plan tiers                           │
+│  • Issues API keys with permission scopes                       │
+│  • Writes keys + scopes to core.api_keys                        │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ provisions API keys
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ AI Agents (MCP Clients)                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
+│  │ Claude       │  │ Claude API   │  │ Custom MCP client     │  │
+│  │ Desktop      │  │ integration  │  │ (any framework)       │  │
+│  └──────┬───────┘  └──────┬───────┘  └───────────┬───────────┘  │
+└─────────┼─────────────────┼──────────────────────┼──────────────┘
+          │ API key          │ API key              │ API key
+          ▼                  ▼                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ API Gateway (Kong / NGINX / Cloudflare)                         │
+│  • TLS termination                                              │
+│  • Rate limiting per key                                        │
+│  • Route: /mcp/gse → GSE server, /mcp/{domain} → etc.          │
+└──────────────┬──────────────────────────────────────────────────┘
+               │
+               ▼
+┌──────────────────┐ ┌──────────────────────────────────────────┐
+│ GSE MCP Server   │ │ Future domain servers                    │
+│ (domain module)  │ │ (same pattern, added as needed)          │
+│                  │ │                                          │
+│ Uses: mcp_core   │ │ Uses: mcp_core                           │
+└────────┬─────────┘ └────────┬─────────────────────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Shared Infrastructure                                           │
+│  ┌────────────┐    ┌──────────────┐    ┌──────────────┐         │
+│  │ PostgreSQL │    │ Redis        │    │ Logfire      │         │
+│  │ Keys+Audit │    │ Cache+Keys   │    │ Observability│         │
+│  └────────────┘    └──────────────┘    └──────────────┘         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The MCP platform is a **tool product**. It authenticates API keys, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the upstream platform's job. The upstream platform provisions API keys (with scopes) by writing to `core.api_keys`. The MCP servers read those keys and enforce the scopes.
+
+---
+
+## 3. Project Structure
+
+```
+mcp-platform/
+├── pyproject.toml                          # Workspace root, defines all packages
+├── README.md
+├── docker-compose.yml                      # Dev: all services + Redis + Postgres
+├── alembic/                                # DB migrations (split by schema)
+│   ├── alembic.ini
+│   ├── env.py                              # Runs core + domain migrations in order
+│   ├── core/                               # core schema migrations
+│   │   └── versions/
+│   │       ├── 001_create_api_keys.py
+│   │       ├── 002_create_audit_log.py
+│   │       └── 003_create_domain_registry.py
+│   └── domains/                            # Per-domain schema migrations
+│       └── gse/
+│           └── versions/
+│               ├── 001_create_symbols.py
+│               ├── 002_create_historical_prices.py
+│               └── 003_create_cached_prices.py
+│
+├── core/                                   # ── Shared library (mcp_core) ──
+│   ├── pyproject.toml                      # Installable as mcp-core
+│   └── mcp_core/
+│       ├── __init__.py
+│       ├── server_factory.py               # Creates configured MCP server from parts
+│       │
+│       ├── config.py                       # Base settings all domains inherit
+│       │
+│       ├── auth/
+│       │   ├── __init__.py
+│       │   ├── api_keys.py                 # API key validation + caching
+│       │   ├── identity.py                 # CallerIdentity + resolution from key
+│       │   └── scopes.py                   # Scope matching logic (domain:tool, domain:*)
+│       │
+│       ├── adapters/
+│       │   ├── __init__.py
+│       │   ├── base.py                     # DataAdapter protocol (generic)
+│       │   └── manager.py                  # DataSourceManager with fallback chain
+│       │
+│       ├── cache/
+│       │   ├── __init__.py
+│       │   └── redis_cache.py              # Prefix-aware, TTL-configurable cache
+│       │
+│       ├── middleware/
+│       │   ├── __init__.py
+│       │   ├── auth.py                     # API key extraction + identity resolution
+│       │   └── audit.py                    # Structured audit logging to Postgres
+│       │
+│       ├── models/
+│       │   ├── __init__.py
+│       │   ├── base.py                     # ToolResponse, AuditRecord (Pydantic)
+│       │   └── db.py                       # SQLAlchemy: audit_log, api_keys
+│       │
+│       ├── observability/
+│       │   ├── __init__.py
+│       │   └── logfire_setup.py            # Logfire (OTEL-based) instrumentation
+│       │
+│       └── utils/
+│           ├── __init__.py
+│           ├── circuit_breaker.py           # Generic circuit breaker
+│           └── retry.py                     # Exponential backoff with jitter
+│
+├── domains/                                # ── Domain modules ──
+│   │
+│   ├── gse/                                # Ghana Stock Exchange
+│   │   ├── pyproject.toml                  # Depends on mcp-core
+│   │   └── gse_mcp/
+│   │       ├── __init__.py
+│   │       ├── main.py                     # Entrypoint: wires tools + adapters → factory
+│   │       ├── config.py                   # GSE-specific settings (extends base)
+│   │       ├── tools/
+│   │       │   ├── __init__.py             # Registers all tools
+│   │       │   ├── live_prices.py
+│   │       │   ├── stock_price.py
+│   │       │   ├── stock_history.py
+│   │       │   └── market_summary.py       # New tools added here as needed
+│   │       ├── adapters/
+│   │       │   ├── __init__.py
+│   │       │   ├── protocol.py             # GSEDataAdapter (extends base DataAdapter)
+│   │       │   ├── kwayisi.py              # Primary free API
+│   │       │   ├── gse_official.py         # Licensed feed (stub)
+│   │       │   └── internal_db.py          # Historical data store
+│   │       ├── models.py                   # Stock, HistoryEntry, MarketSummary, Equity
+│   │       └── symbol_registry.py          # Dynamic symbol lookup via /equities + cache
+│   │
+│   └── # Future domains follow the same structure:
+│       # domains/{name}/{name}_mcp/ with tools/, adapters/, models.py, config.py, main.py
+│
+├── tests/
+│   ├── conftest.py                         # Shared fixtures: Redis, Postgres, mock clock
+│   ├── core/
+│   │   ├── test_cache.py
+│   │   ├── test_circuit_breaker.py
+│   │   ├── test_audit.py
+│   │   ├── test_auth.py
+│   │   ├── test_scope_matching.py
+│   │   ├── test_data_source_manager.py
+│   │   └── test_server_factory.py
+│   └── domains/
+│       └── gse/
+│           ├── conftest.py                 # GSE-specific fixtures, kwayisi mocks
+│           ├── test_tools.py
+│           ├── test_kwayisi_adapter.py
+│           ├── test_internal_db_adapter.py
+│           └── fixtures/                   # Recorded kwayisi API responses
+│               ├── live_all.json
+│               ├── live_mtn.json
+│               └── history_gcb.json
+│
+├── scripts/
+│   ├── seed_db.py                          # Seed historical data
+│   ├── export_audit_logs.py                # Nightly: Postgres → Parquet cold storage
+│   └── health_check.py                     # Liveness/readiness probe script
+│
+└── deploy/
+    ├── Dockerfile.gse
+    └── docker-compose.prod.yml             # Add more Dockerfiles per domain as needed
+```
+
+---
+
+## 4. Core Library
+
+### 4.1 Base Configuration
+
+Every domain inherits from this. Domain-specific settings extend it with their own fields and env prefix.
+
+```python
+# core/mcp_core/config.py
+
+from pydantic_settings import BaseSettings
+
+
+class CoreSettings(BaseSettings):
+    """Settings shared by all domain modules."""
+
+    # Server
+    host: str = "0.0.0.0"
+    port: int = 8080
+    transport: str = "streamable-http"      # "stdio" or "streamable-http"
+    log_level: str = "INFO"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+
+    # PostgreSQL (audit log + domain data)
+    database_url: str = "postgresql+asyncpg://mcp:mcp@localhost:5432/mcp_platform"
+
+    # Circuit breaker defaults
+    cb_failure_threshold: int = 3
+    cb_recovery_timeout_seconds: float = 30.0
+
+    # Auth
+    api_key_cache_ttl_seconds: int = 300  # Cache key→identity lookup for 5 min
+    api_key_hash_algorithm: str = "sha256"
+
+    # Observability
+    logfire_token: str = ""               # Logfire write token (OTEL-based)
+```
+
+### 4.2 Generic Data Adapter Protocol
+
+The adapter interface is deliberately minimal. Domains define their own method signatures by extending this protocol. The core only cares about `name`, `priority`, and `health_check` for orchestration.
+
+```python
+# core/mcp_core/adapters/base.py
+
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class DataAdapter(Protocol):
+    """Minimum contract for any data source adapter."""
+
+    @property
+    def name(self) -> str:
+        """Identifier for logging, metrics, and cache tagging."""
+        ...
+
+    @property
+    def priority(self) -> int:
+        """Lower = tried first in the fallback chain."""
+        ...
+
+    async def health_check(self) -> bool:
+        """Can this adapter reach its data source right now?"""
+        ...
+```
+
+Domains extend this with their own methods:
+
+```python
+# domains/gse/gse_mcp/adapters/protocol.py
+
+from mcp_core.adapters.base import DataAdapter
+from gse_mcp.models import Stock, HistoryEntry, MarketSummary
+
+
+class GSEDataAdapter(DataAdapter):
+    async def get_live_prices(self) -> list[Stock]: ...
+    async def get_stock_price(self, symbol: str) -> Stock | None: ...
+    async def get_stock_history(self, symbol: str, days: int) -> list[HistoryEntry]: ...
+    async def get_market_summary(self) -> MarketSummary | None: ...
+```
+
+A logistics domain would look completely different:
+
+```python
+# Example: domains/logistics/adapters/protocol.py
+
+class LogisticsDataAdapter(DataAdapter):
+    async def get_shipment_status(self, tracking_id: str) -> Shipment: ...
+    async def get_route_eta(self, origin: str, dest: str) -> RouteETA: ...
+```
+
+### 4.3 DataSourceManager
+
+Generic adapter orchestration. The domain passes in its typed adapters; the manager handles circuit breaking and fallback ordering. Each domain wraps this with typed methods.
+
+```python
+# core/mcp_core/adapters/manager.py
+
+from mcp_core.adapters.base import DataAdapter
+from mcp_core.utils.circuit_breaker import CircuitBreaker
+
+
+class DataSourceManager:
+    """Manages a set of adapters with circuit breakers and priority fallback."""
+
+    def __init__(self, adapters: list[DataAdapter], cb_failure_threshold: int = 3,
+                 cb_recovery_timeout: float = 30.0):
+        self.adapters = sorted(adapters, key=lambda a: a.priority)
+        self.breakers = {
+            a.name: CircuitBreaker(
+                name=a.name,
+                failure_threshold=cb_failure_threshold,
+                recovery_timeout=cb_recovery_timeout,
+            )
+            for a in adapters
+        }
+
+    def get_available_adapters(self) -> list[DataAdapter]:
+        """Return adapters whose circuit breakers allow a call."""
+        return [a for a in self.adapters if self.breakers[a.name].is_available]
+
+    def record_success(self, adapter_name: str) -> None:
+        self.breakers[adapter_name].record_success()
+
+    def record_failure(self, adapter_name: str) -> None:
+        self.breakers[adapter_name].record_failure()
+
+    async def health_summary(self) -> dict[str, dict]:
+        """Return health and breaker state for each adapter."""
+        result = {}
+        for adapter in self.adapters:
+            breaker = self.breakers[adapter.name]
+            healthy = False
+            if breaker.is_available:
+                try:
+                    healthy = await adapter.health_check()
+                except Exception:
+                    healthy = False
+            result[adapter.name] = {
+                "healthy": healthy,
+                "circuit_state": breaker.state.value,
+                "failure_count": breaker.failure_count,
+            }
+        return result
+```
+
+Each domain builds a typed layer on top:
+
+```python
+# domains/gse/gse_mcp/data.py (domain-level manager)
+
+from mcp_core.adapters.manager import DataSourceManager
+from mcp_core.cache.redis_cache import Cache
+from gse_mcp.adapters.protocol import GSEDataAdapter
+from gse_mcp.models import Stock
+
+
+class GSEDataService:
+    """GSE-specific orchestration: cache check → adapter fallback → cache write."""
+
+    def __init__(self, manager: DataSourceManager, cache: Cache):
+        self.manager = manager
+        self.cache = cache
+
+    async def get_live_prices(self) -> tuple[list[Stock], str, bool]:
+        cached = await self.cache.get("live:all")
+        if cached:
+            stocks = [Stock(**s) for s in cached["stocks"]]
+            return stocks, cached["source"], True  # cache_hit=True
+
+        for adapter in self.manager.get_available_adapters():
+            try:
+                stocks = await adapter.get_live_prices()
+                self.manager.record_success(adapter.name)
+                await self.cache.set("live:all", {
+                    "stocks": [s.model_dump() for s in stocks],
+                    "source": adapter.name,
+                }, base_ttl=30)
+                return stocks, adapter.name, False
+            except Exception:
+                self.manager.record_failure(adapter.name)
+                continue
+
+        raise RuntimeError("All GSE data sources unavailable")
+```
+
+### 4.4 Cache Layer
+
+The cache is prefix-aware and TTL-agnostic — the domain tells it how long to cache each key. Core has no concept of "active hours" or "trading hours." If a domain wants different TTLs at different times, it computes the TTL before calling the cache.
+
+```python
+# core/mcp_core/cache/redis_cache.py
+
+import json
+import redis.asyncio as redis
+
+
+class Cache:
+    def __init__(self, redis_url: str, prefix: str):
+        self.client = redis.from_url(redis_url)
+        self.prefix = prefix                        # e.g. "gse", "logistics"
+
+    async def get(self, key: str) -> dict | None:
+        raw = await self.client.get(f"{self.prefix}:{key}")
+        if raw is None:
+            return None
+        return json.loads(raw)
+
+    async def set(self, key: str, value: dict, ttl_seconds: int) -> None:
+        await self.client.setex(f"{self.prefix}:{key}", ttl_seconds, json.dumps(value))
+
+    async def invalidate(self, pattern: str) -> None:
+        keys = []
+        async for key in self.client.scan_iter(f"{self.prefix}:{pattern}*"):
+            keys.append(key)
+        if keys:
+            await self.client.delete(*keys)
+```
+
+The domain decides TTLs. For GSE, the data service computes TTL based on trading hours:
+
+```python
+# domains/gse/gse_mcp/data.py (excerpt)
+
+from datetime import datetime, timezone
+
+# TTLs in seconds
+TTLS = {
+    "live":    {"active": 30,  "inactive": 3600},
+    "history": {"active": 14400, "inactive": 14400},  # 4 hours always
+    "summary": {"active": 60,  "inactive": 3600},
+    "equities": {"active": 86400, "inactive": 86400},  # 24 hours always
+}
+
+def get_ttl(resource: str) -> int:
+    ttl_config = TTLS.get(resource, {"active": 60, "inactive": 60})
+    if _is_trading_hours():
+        return ttl_config["active"]
+    return ttl_config["inactive"]
+
+def _is_trading_hours() -> bool:
+    now = datetime.now(timezone.utc)
+    if now.weekday() >= 5:
+        return False
+    return 10 <= now.hour < 15    # GSE: Mon-Fri, 10:00-15:00 GMT
+
+# Usage in the data service:
+await cache.set("live:all", data, ttl_seconds=get_ttl("live"))
+```
+
+A non-market domain would just pass a flat TTL — no hours logic needed. The core cache doesn't care.
+
+### 4.5 Server Factory
+
+The factory wires all the core pieces together so each domain's `main.py` stays small.
+
+```python
+# core/mcp_core/server_factory.py
+
+from fastapi import FastAPI
+from mcp_core.config import CoreSettings
+from mcp_core.middleware.auth import AuthMiddleware
+from mcp_core.middleware.audit import AuditMiddleware
+from mcp_core.observability.logfire_setup import setup_logfire
+
+
+def create_mcp_app(
+    domain_name: str,
+    settings: CoreSettings,
+    register_tools: callable,       # Function that registers MCP tools on the server
+    health_check: callable,         # Async function returning readiness status
+) -> FastAPI:
+    """
+    Build a fully configured FastAPI + MCP server.
+
+    The domain module provides:
+      - domain_name: identifier for metrics, cache prefix, audit logs
+      - settings: domain config (extends CoreSettings)
+      - register_tools: function that registers MCP tools
+      - health_check: async function for readiness probe
+
+    The factory provides:
+      - Transport (stdio or Streamable HTTP based on settings)
+      - Auth middleware
+      - Audit logging middleware
+      - Rate limiting
+      - Health endpoints (/health/live, /health/ready)
+      - Logfire (OTEL-based tracing, metrics, dashboards)
+    """
+    app = FastAPI(title=f"{domain_name}-mcp")
+
+    # Observability
+    if settings.logfire_token:
+        setup_logfire(app, domain_name, settings.logfire_token)
+
+    # Middleware (applied in reverse order; audit runs last = logs everything)
+    app.add_middleware(AuditMiddleware, domain=domain_name, db_url=settings.database_url)
+    app.add_middleware(AuthMiddleware,
+                       redis_url=settings.redis_url,
+                       database_url=settings.database_url,
+                       cache_ttl=settings.api_key_cache_ttl_seconds)
+
+    # Health endpoints
+    @app.get("/health/live")
+    async def liveness():
+        return {"status": "ok"}
+
+    @app.get("/health/ready")
+    async def readiness():
+        return await health_check()
+
+    # Register MCP tools
+    register_tools(app)
+
+    return app
+```
+
+Each domain's `main.py` becomes ~30 lines:
+
+```python
+# domains/gse/gse_mcp/main.py
+
+from mcp_core.server_factory import create_mcp_app
+from mcp_core.cache.redis_cache import Cache
+from mcp_core.adapters.manager import DataSourceManager
+from gse_mcp.config import GSESettings
+from gse_mcp.adapters.kwayisi import KwayisiAdapter
+from gse_mcp.adapters.internal_db import InternalDBAdapter
+from gse_mcp.data import GSEDataService
+from gse_mcp.tools import register_gse_tools
+
+settings = GSESettings()
+
+# Adapters
+adapters = [
+    KwayisiAdapter(settings),
+    InternalDBAdapter(settings),
+]
+manager = DataSourceManager(adapters, settings.cb_failure_threshold,
+                            settings.cb_recovery_timeout_seconds)
+
+# Cache with GSE trading hours
+cache = Cache(settings.redis_url, prefix="gse")
+
+# Domain data service
+data_service = GSEDataService(manager, cache)
+
+# Wire it up
+app = create_mcp_app(
+    domain_name="gse",
+    settings=settings,
+    register_tools=lambda app: register_gse_tools(app, data_service),
+    health_check=manager.health_summary,
+)
+```
+
+---
+
+## 5. GSE Domain Module — Tool Specifications
+
+All tool names are prefixed with the domain (`gse_`) so they don't collide when a client connects to multiple domain servers.
+
+### 5.1 gse_get_live_prices
+
+```json
+{
+  "name": "gse_get_live_prices",
+  "description": "Fetch real-time prices for all stocks on the Ghana Stock Exchange. Returns price, change, and volume for each equity. Data is from the live trading session (10:00-15:00 GMT) or the most recent close outside trading hours.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sector": {
+        "type": "string",
+        "enum": ["financials", "consumer_goods", "industrials", "oil_and_gas", "technology", "all"],
+        "description": "Filter by GSE sector. Defaults to 'all'.",
+        "default": "all"
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": ["symbol", "price", "change", "volume"],
+        "default": "symbol"
+      }
+    },
+    "required": []
+  }
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "timestamp": "2026-05-22T14:30:00Z",
+  "source": "kwayisi",
+  "is_live": true,
+  "cache_hit": false,
+  "stocks": [
+    {
+      "symbol": "MTN",
+      "name": "MTN Ghana",
+      "price": 25.50,
+      "change": 0.72,
+      "change_pct": 2.91,
+      "volume": 374476,
+      "sector": "technology"
+    }
+  ]
+}
+```
+
+### 5.2 gse_get_stock_price
+
+```json
+{
+  "name": "gse_get_stock_price",
+  "description": "Get current price, change, and volume for a specific stock on the Ghana Stock Exchange.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "GSE ticker symbol (case-insensitive). Examples: MTN, GCB, ABSA, CAL, EGH, GOIL."
+      }
+    },
+    "required": ["symbol"]
+  }
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "timestamp": "2026-05-22T14:30:00Z",
+  "source": "kwayisi",
+  "is_live": true,
+  "cache_hit": true,
+  "stock": {
+    "symbol": "MTN",
+    "name": "MTN Ghana",
+    "price": 25.50,
+    "change": 0.72,
+    "change_pct": 2.91,
+    "volume": 374476,
+    "sector": "technology",
+    "market_cap_ghs": null,
+    "pe_ratio": null,
+    "eps": null
+  }
+}
+```
+
+### 5.3 gse_get_stock_history
+
+```json
+{
+  "name": "gse_get_stock_history",
+  "description": "Get historical end-of-day prices for a GSE-listed stock.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "GSE ticker symbol."
+      },
+      "days": {
+        "type": "integer",
+        "description": "Trading days of history. Max 365. Default 30.",
+        "default": 30,
+        "minimum": 1,
+        "maximum": 365
+      }
+    },
+    "required": ["symbol"]
+  }
+}
+```
+
+### 5.4 gse_get_market_summary
+
+```json
+{
+  "name": "gse_get_market_summary",
+  "description": "Get today's GSE market summary: composite index, total volume, turnover, gainers, losers.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "timestamp": "2026-05-22T15:00:00Z",
+  "source": "kwayisi",
+  "is_live": false,
+  "cache_hit": true,
+  "gse_ci": 15320.45,
+  "gse_fsi": 2105.12,
+  "total_volume": 1182029,
+  "total_turnover_ghs": 4612250.32,
+  "market_cap_ghs": 265400000000,
+  "gainers": 2,
+  "losers": 4,
+  "unchanged": 16,
+  "top_gainers": [{"symbol": "MTN", "change_pct": 2.91}],
+  "top_losers": [{"symbol": "ETI", "change_pct": -3.40}]
+}
+```
+
+### 5.5 gse_get_company_info
+
+```json
+{
+  "name": "gse_get_company_info",
+  "description": "Get company profile, directors, EPS, DPS, and shares outstanding for a GSE-listed equity. Data sourced from the equities registry.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "GSE ticker symbol."
+      }
+    },
+    "required": ["symbol"]
+  }
+}
+```
+
+**Scope:** `gse:company_info:read`
+
+---
+
+## 6. GSE Adapter: kwayisi
+
+Primary adapter. Free, no authentication required.
+
+**Base URL:** `https://dev.kwayisi.org/apis/gse`
+
+**Endpoints:**
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/live` | GET | Array of `{name, price, change, volume}` for all listed symbols |
+| `/live/{symbol}` | GET | Single `{name, price, change, volume}` object |
+| `/equities` | GET | Array of equity objects with company profile, EPS, DPS, shares outstanding |
+| `/equities/{symbol}` | GET | Single equity object with full company details |
+
+**`/equities/{symbol}` response shape:**
+
+```json
+{
+  "capital": 383980,
+  "company": {
+    "address": "P. O. Box 123, Accra",
+    "directors": [
+      {"name": "Kofi Abanga", "position": "Chairman"},
+      {"name": "Ama Nantwie", "position": null}
+    ],
+    "email": "abc@example.com",
+    "facsimile": "+233 (302) 123 456",
+    "industry": "Mining",
+    "name": "ABC Company Ltd.",
+    "sector": "Basic Materials",
+    "telephone": "+233 (302) 123 789",
+    "website": "www.example.com"
+  },
+  "dps": 0.07,
+  "eps": 0.14,
+  "name": "ABC",
+  "price": 10.52,
+  "shares": 36500
+}
+```
+
+**Query params:** `?prettify` for formatted JSON, `?callback=fn` for JSONP.
+
+**Dynamic symbol map:** Instead of maintaining a hardcoded symbol-to-company mapping, the adapter fetches `/equities` on startup and caches it with a 24-hour TTL. This ensures new listings and delistings are picked up automatically. The cached equities data serves as the symbol registry — providing company name, sector, industry, and other metadata for each ticker.
+
+**Known issues and mitigations:**
+
+| Issue | Mitigation |
+|-------|------------|
+| No SLA, no uptime guarantee | Circuit breaker (3 failures → open 30s) + fallback to internal DB |
+| No rate limit docs | Self-impose 1 req/s; cache absorbs most traffic |
+| Connection timeouts from some hosts | httpx timeout set to 8s; retry 3x with backoff |
+| Some `/equities` fields (dps, eps) are null | Tolerate nulls in domain models; don't fail on missing data |
+| No market summary endpoint | Derive from `/live` response (aggregate volume, count gainers/losers) |
+| No CORS headers | Server-side calls only; not a concern for MCP |
+| Unclear redistribution terms | Low risk for internal/developer use; use GSE official feed for commercial redistribution |
+
+---
+
+## 7. GSE Domain Models
+
+```python
+# domains/gse/gse_mcp/models.py
+
+from pydantic import BaseModel, Field
+from datetime import datetime
+
+
+class Stock(BaseModel):
+    symbol: str
+    name: str | None = None
+    price: float
+    change: float = 0.0
+    change_pct: float = 0.0
+    volume: int = 0
+    sector: str | None = None
+    market_cap_ghs: float | None = None
+    pe_ratio: float | None = None
+    eps: float | None = None
+
+
+class HistoryEntry(BaseModel):
+    date: str                           # YYYY-MM-DD
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float
+    volume: int = 0
+
+
+class MarketSummary(BaseModel):
+    timestamp: datetime
+    gse_ci: float | None = None
+    gse_fsi: float | None = None
+    total_volume: int = 0
+    total_turnover_ghs: float = 0.0
+    market_cap_ghs: float | None = None
+    gainers: int = 0
+    losers: int = 0
+    unchanged: int = 0
+    top_gainers: list[Stock] = Field(default_factory=list)
+    top_losers: list[Stock] = Field(default_factory=list)
+
+
+class Director(BaseModel):
+    name: str
+    position: str | None = None
+
+
+class CompanyProfile(BaseModel):
+    name: str
+    sector: str | None = None
+    industry: str | None = None
+    address: str | None = None
+    telephone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    directors: list[Director] = Field(default_factory=list)
+
+
+class Equity(BaseModel):
+    """Full equity record from kwayisi /equities endpoint."""
+    symbol: str
+    price: float | None = None
+    eps: float | None = None             # Earnings per share
+    dps: float | None = None             # Dividend per share
+    shares: int | None = None            # Shares outstanding
+    capital: float | None = None         # Market capitalisation
+    company: CompanyProfile | None = None
+```
+
+---
+
+## 8. GSE Symbol Registry
+
+The symbol registry is built dynamically from the kwayisi `/equities` endpoint — not maintained as a static file. On startup, the adapter fetches the full equities list and caches it. New listings and delistings are reflected automatically.
+
+```python
+# domains/gse/gse_mcp/symbol_registry.py
+
+from gse_mcp.models import Equity
+
+
+class SymbolRegistry:
+    """
+    Dynamically built from kwayisi /equities endpoint.
+    Cached with 24h TTL. Refreshed on cache miss.
+    """
+
+    def __init__(self, cache, adapter):
+        self.cache = cache
+        self.adapter = adapter
+
+    async def get_all(self) -> list[Equity]:
+        cached = await self.cache.get("equities")
+        if cached:
+            return [Equity(**e) for e in cached]
+
+        equities = await self.adapter.fetch_equities()
+        await self.cache.set("equities", [e.model_dump() for e in equities], ttl_seconds=86400)
+        return equities
+
+    async def get(self, symbol: str) -> Equity | None:
+        all_equities = await self.get_all()
+        return next((e for e in all_equities if e.symbol.upper() == symbol.upper()), None)
+
+    async def list_symbols(self) -> list[str]:
+        equities = await self.get_all()
+        return [e.symbol for e in equities]
+```
+
+The old static `symbol_map.py` dict is no longer needed. See Section 6 for the `/equities` response schema that feeds this registry.
+
+---
+
+## 9. Core Shared Models
+
+```python
+# core/mcp_core/models/base.py
+
+from pydantic import BaseModel
+from datetime import datetime
+
+
+class ToolResponse(BaseModel):
+    """Wrapper metadata returned with every tool call."""
+    timestamp: datetime
+    source: str             # Which adapter served the data
+    is_live: bool           # True if the domain's active hours apply
+    cache_hit: bool = False
+
+
+class AuditRecord(BaseModel):
+    """In-memory representation before writing to Postgres."""
+    timestamp: datetime
+    domain: str             # e.g. "gse", "logistics"
+    key_id: str             # API key used (not the secret)
+    owner_id: str           # Opaque upstream ID
+    owner_label: str        # Human-readable label
+    transport: str          # "stdio" | "http"
+    tool_name: str
+    tool_params: dict
+    data_source: str
+    cache_hit: bool
+    response_ms: int
+    error: str | None = None
+    ip_address: str | None = None
+```
+
+---
+
+## 10. Caching Strategy
+
+### 10.1 Principle
+
+The core cache layer is a dumb key-value store with TTLs. It does not know about trading hours, market schedules, or domain-specific freshness rules. The domain decides the TTL for each cache write — see Section 4.4 for the GSE TTL logic.
+
+### 10.2 GSE TTL Configuration
+
+| Cache Key | TTL (trading hours) | TTL (off hours) | Rationale |
+|-----------|--------------------|--------------------|-----------|
+| `gse:live:all` | 30s | 1h | Prices change intra-day; GSE is low-frequency |
+| `gse:live:{symbol}` | 30s | 1h | Same |
+| `gse:history:{symbol}:{days}` | 4h | 4h | EOD data changes once per day |
+| `gse:summary` | 60s | 1h | Derived from live data |
+| `gse:equities` | 24h | 24h | Company profiles; new listings/delistings are rare |
+| `gse:equities:{symbol}` | 24h | 24h | Individual company profile |
+
+These TTLs are computed by the GSE data service (not the cache layer) and passed as `ttl_seconds` to `cache.set()`.
+
+### 10.3 Multi-domain Key Namespacing
+
+Each domain uses its own prefix. All keys follow the pattern `{domain}:{resource}:{identifier}`.
+
+| Domain | Example Keys |
+|--------|-------------|
+| GSE | `gse:live:all`, `gse:live:MTN`, `gse:history:GCB:30`, `gse:equities` |
+| (future) | `{domain}:{resource}:{identifier}` |
+
+All domains share a single Redis instance. Key collision is impossible because of the prefix.
+
+---
+
+## 11. Authentication and Authorisation
+
+### 11.1 Principle
+
+The MCP platform authenticates API keys and enforces permission scopes. It does not manage users, billing, or plans. An upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions API keys by writing to `core.api_keys`. The MCP platform is a read-only consumer of that data.
+
+This makes the platform reusable: embed it in a SaaS product, deploy it inside a bank, or run it from a local config file. The auth contract is the same in every case.
+
+### 11.2 Permission Scopes
+
+Each API key carries a list of permission scopes that define exactly which tools it can call. Scopes use the colon-separated `domain:resource:action` pattern from the MCP ecosystem.
+
+**Mapping tools to scopes:** Strip the verb prefix from the tool name — that gives you the resource. The verb tells you the action. `get_live_prices` → resource `live_prices`, action `read`. Future tools that write or mutate data would use `write` or `execute`.
+
+**Examples:**
+
+| Scope | Grants access to |
+|-------|-----------------|
+| `gse:*:*` | All resources, all actions in the GSE domain |
+| `gse:*:read` | All resources in GSE, read-only |
+| `gse:live_prices:read` | Only the live prices tool in GSE |
+| `gse:stock_price:read` | Only the single stock price tool in GSE |
+| `gse:stock_history:read` | Only the stock history tool in GSE |
+| `gse:market_summary:read` | Only the market summary tool in GSE |
+| `gse:company_info:read` | Only the company info tool in GSE |
+
+A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data but only bond yields from a hypothetical GFI domain.
+
+**Scope resolution rules:**
+
+1. `{domain}:*:*` grants access to all current and future resources and actions in that domain
+2. `{domain}:*:{action}` grants access to all resources for a specific action (e.g. read-only across a domain)
+3. `{domain}:{resource}:*` grants all actions on a specific resource
+4. `{domain}:{resource}:{action}` grants exactly one action on one resource
+5. If no scope matches the requested tool, the call is rejected with `403 Forbidden`
+6. Scopes are case-insensitive and stored lowercase
+7. More specific scopes don't override broader ones — any matching scope is sufficient
+
+### 11.3 API Key Format and Storage
+
+**Key format:** `sk_live_` prefix + 32 random bytes, base62-encoded. The upstream platform generates keys, stores the SHA-256 hash in `core.api_keys` along with the scopes, and shows the plaintext to the user once.
+
+**Key record:**
+
+```python
+# What gets stored in core.api_keys and cached in Redis
+
+@dataclass
+class APIKeyRecord:
+    key_id: str                 # e.g. "key_abc123"
+    key_hash: str               # SHA-256 of the plaintext
+    owner_id: str               # Opaque ID from the upstream platform (user, service account, etc.)
+    owner_label: str            # Human-readable label, e.g. "Kwame's Claude Desktop"
+    scopes: list[str]           # ["gse:*:*", "gfi:bond_yields:read"]
+    rate_limit_rpm: int         # Requests per minute (set by upstream platform)
+    is_active: bool
+    expires_at: datetime | None
+    created_at: datetime
+```
+
+### 11.4 CallerIdentity
+
+When a key is resolved, the MCP server works with a `CallerIdentity` — a thin, scope-aware object. No plan tiers, no roles, no tenant hierarchy. Just: who is this, what can they call, and how fast.
+
+```python
+# core/mcp_core/middleware/auth.py
+
+from dataclasses import dataclass
+
+
+@dataclass
+class CallerIdentity:
+    key_id: str                 # API key identifier (for audit, not the secret)
+    owner_id: str               # Opaque upstream ID
+    owner_label: str            # Display name for audit logs
+    scopes: list[str]           # ["gse:*:*", "gfi:bond_yields:read"]
+    rate_limit_rpm: int         # Requests per minute
+    transport: str              # "stdio" | "http"
+
+    def can_use_tool(self, domain: str, resource: str, action: str) -> bool:
+        """Check if this key's scopes permit domain:resource:action."""
+        patterns = [
+            f"{domain}:*:*",               # full domain access
+            f"{domain}:*:{action}",         # all resources, specific action
+            f"{domain}:{resource}:*",       # specific resource, all actions
+            f"{domain}:{resource}:{action}",# exact match
+        ]
+        return any(p in self.scopes for p in patterns)
+```
+
+### 11.5 API Key Resolution
+
+The auth middleware resolves raw API keys to `CallerIdentity` with a Redis-first, Postgres-fallback lookup. No IdP round-trips, no token introspection.
+
+```python
+# core/mcp_core/middleware/auth.py
+
+import hashlib
+import json
+from dataclasses import asdict
+
+
+class APIKeyResolver:
+    """Resolves an API key to a CallerIdentity."""
+
+    def __init__(self, redis_client, db_session_factory, cache_ttl: int = 300):
+        self.redis = redis_client
+        self.db = db_session_factory
+        self.cache_ttl = cache_ttl
+
+    async def resolve(self, raw_key: str) -> CallerIdentity | None:
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+
+        # 1. Check Redis cache
+        cached = await self.redis.get(f"apikey:{key_hash}")
+        if cached:
+            return CallerIdentity(**json.loads(cached))
+
+        # 2. Fall back to Postgres
+        async with self.db() as session:
+            row = await session.execute(
+                select(ApiKeyModel)
+                .where(ApiKeyModel.key_hash == key_hash)
+                .where(ApiKeyModel.is_active == True)
+                .where(
+                    (ApiKeyModel.expires_at == None) |
+                    (ApiKeyModel.expires_at > func.now())
+                )
+            )
+            record = row.scalar_one_or_none()
+            if not record:
+                return None
+
+            identity = CallerIdentity(
+                key_id=record.key_id,
+                owner_id=record.owner_id,
+                owner_label=record.owner_label,
+                scopes=record.scopes,
+                rate_limit_rpm=record.rate_limit_rpm,
+                transport="http",
+            )
+
+            # 3. Cache for next time
+            await self.redis.setex(
+                f"apikey:{key_hash}",
+                self.cache_ttl,
+                json.dumps(asdict(identity)),
+            )
+            return identity
+```
+
+### 11.6 Scope Enforcement in Domain Servers
+
+Each domain server checks scopes before executing a tool. The check is one line — no policy objects, no tier maps.
+
+```python
+# domains/gse/gse_mcp/tools/live_prices.py (excerpt)
+
+async def handle_get_live_prices(caller: CallerIdentity, params: dict):
+    if not caller.can_use_tool("gse", "live_prices", "read"):
+        raise PermissionError("API key missing scope: gse:live_prices:read (or gse:*:read, gse:*:*)")
+
+    # ... proceed with tool logic
+```
+
+### 11.7 stdio Transport (Local / Self-hosted)
+
+For local development and self-hosted deployments, the MCP server can run in stdio mode. In this mode, a local config file or environment variable specifies the scopes directly — no Redis or Postgres needed.
+
+```yaml
+# local_dev_config.yaml
+key_id: "local_dev"
+owner_id: "dev_user"
+owner_label: "Local Development"
+scopes: ["gse:*:*"]
+rate_limit_rpm: 9999
+```
+
+### 11.8 How the Upstream Platform Provisions Keys
+
+The upstream platform (your SaaS, an admin CLI, whatever) writes API key records to `core.api_keys`. This is the only integration point. The MCP platform doesn't care how the upstream decided what scopes to assign — whether that was a billing plan, a manual admin decision, or a config file.
+
+```python
+# Example: upstream platform creates a key (this code lives OUTSIDE the MCP platform)
+
+import hashlib
+import secrets
+
+raw_key = "sk_live_" + secrets.token_urlsafe(32)
+key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+
+# Write to core.api_keys (direct DB insert, or via a provisioning API)
+await db.execute(
+    insert(ApiKeyModel).values(
+        key_id="key_abc123",
+        key_hash=key_hash,
+        owner_id="usr_kwame",
+        owner_label="Kwame's Claude Desktop",
+        scopes=["gse:*:read", "gse:stock_history:read"],
+        rate_limit_rpm=120,
+        is_active=True,
+        expires_at=None,
+    )
+)
+
+# Return raw_key to the user — shown once, never stored in plaintext
+print(f"Your API key: {raw_key}")
+```
+
+---
+
+## 12. Audit Logging
+
+### 12.1 Schema
+
+Shared across all domains. The `key_id` and `domain` columns scope records.
+
+```sql
+CREATE TABLE core.audit_log (
+    id              BIGSERIAL PRIMARY KEY,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    domain          TEXT NOT NULL,              -- 'gse', 'gfi', 'ngx', etc.
+    key_id          TEXT NOT NULL,              -- API key identifier (not secret)
+    owner_id        TEXT NOT NULL,              -- Opaque upstream ID
+    owner_label     TEXT NOT NULL,
+    transport       TEXT NOT NULL,              -- 'stdio' | 'http'
+    tool_name       TEXT NOT NULL,
+    tool_params     JSONB NOT NULL,
+    data_source     TEXT NOT NULL,
+    cache_hit       BOOLEAN NOT NULL,
+    response_ms     INTEGER NOT NULL,
+    error           TEXT,
+    ip_address      INET
+);
+
+CREATE INDEX idx_audit_timestamp ON core.audit_log (timestamp DESC);
+CREATE INDEX idx_audit_domain    ON core.audit_log (domain, timestamp DESC);
+CREATE INDEX idx_audit_key       ON core.audit_log (key_id, timestamp DESC);
+CREATE INDEX idx_audit_owner     ON core.audit_log (owner_id, timestamp DESC);
+CREATE INDEX idx_audit_tool      ON core.audit_log (tool_name, timestamp DESC);
+```
+
+### 12.2 Retention
+
+- Hot (PostgreSQL): 90 days
+- Cold (Parquet export to data lake / S3-compatible): 7 years per regulatory requirements
+- `scripts/export_audit_logs.py` runs nightly via cron, exports records older than 90 days, deletes from Postgres
+
+---
+
+## 13. Error Handling and Rate Limiting
+
+### 13.1 Error Response Format
+
+All tool errors use the MCP protocol's `isError: true` flag on the tool result, with a structured JSON body in the content. Error messages are written for AI agents — they should be actionable, not just descriptive.
+
+**Error envelope:**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"error_code\": \"scope_denied\", \"message\": \"API key missing scope: gse:stock_history:read. Request a key with gse:stock_history:read or gse:*:read.\", \"status\": 403, \"retry\": false}"
+    }
+  ],
+  "isError": true
+}
+```
+
+**Error codes:**
+
+| Code | Status | Retryable | Meaning |
+|------|--------|-----------|---------|
+| `auth_failed` | 401 | No | Invalid, expired, or revoked API key |
+| `scope_denied` | 403 | No | Valid key, but missing the required scope |
+| `rate_limited` | 429 | Yes | Request rate exceeded; `retry_after_seconds` included |
+| `invalid_input` | 400 | No | Bad parameter (unknown symbol, out-of-range value) |
+| `source_unavailable` | 503 | Yes | All data source adapters failed or circuit-broken |
+| `internal_error` | 500 | Yes | Unexpected server error |
+
+**Error body schema:**
+
+```python
+# core/mcp_core/models/base.py
+
+class ToolError(BaseModel):
+    error_code: str                     # One of the codes above
+    message: str                        # Human and agent-readable explanation
+    status: int                         # HTTP-style status code
+    retry: bool                         # Whether the client should retry
+    retry_after_seconds: int | None = None  # Seconds to wait (rate_limited, source_unavailable)
+    detail: str | None = None           # Optional extra context
+```
+
+**Writing error messages for AI agents:**
+
+Error messages should tell the agent what went wrong and what to do about it. The agent may use this to self-correct, inform the user, or try a different approach.
+
+- Bad: `"Forbidden"`
+- Good: `"API key missing scope: gse:stock_history:read. Request a key with gse:stock_history:read or gse:*:read."`
+- Bad: `"Rate limit exceeded"`
+- Good: `"Rate limit exceeded (60 requests/minute). Retry after 23 seconds."`
+- Bad: `"Service unavailable"`
+- Good: `"All GSE data sources are currently unavailable. The platform is using cached data where possible. Retry in 30 seconds."`
+
+### 13.2 Rate Limiting
+
+#### Enforcement: API Gateway
+
+Rate limiting is handled by the API gateway (Kong, NGINX, or Cloudflare), not the MCP server. The gateway reads `rate_limit_rpm` from the API key record (cached in Redis) and enforces it using its built-in sliding window or token bucket implementation.
+
+The MCP server does not implement rate limiting logic. This avoids duplicating what the gateway already does well and eliminates the risk of two rate limiters conflicting.
+
+#### Rate Limit Metadata in Responses
+
+Following OpenAI and Anthropic's convention, the gateway attaches rate limit headers to every HTTP response. For MCP tool results (which are inside the HTTP body, not headers), the MCP server passes through the gateway's rate limit metadata in the response envelope:
+
+```json
+{
+  "timestamp": "2026-05-22T14:30:00Z",
+  "source": "kwayisi",
+  "is_live": true,
+  "cache_hit": false,
+  "rate_limit": {
+    "limit": 120,
+    "remaining": 87,
+    "reset": 1716480120
+  },
+  "stocks": [...]
+}
+```
+
+When the gateway rejects a request (429), the MCP server never sees it — the gateway returns the error directly with a `Retry-After` header. For rate limit errors that reach the MCP server (e.g. self-imposed limits on upstream adapter calls), the `rate_limited` error code includes `retry_after_seconds`.
+
+---
+
+## 14. Database Design
+
+### 14.1 Principle
+
+Same isolation model as the codebase: one shared `core` schema for cross-cutting infrastructure tables, one schema per domain for domain-specific data. A bad migration in GFI cannot touch GSE's tables. All schemas live in a single PostgreSQL instance so cross-schema queries (e.g. "all audit records across all domains") remain simple joins.
+
+### 14.2 Schema Layout
+
+```
+mcp_platform (database)
+│
+├── core (schema)
+│   ├── api_keys                     ← Hashed keys → owner + scopes + rate limit
+│   ├── audit_log                    ← All tool invocations, all domains
+│   ├── domain_registry              ← Which domains are active + metadata
+│   └── circuit_breaker_state        ← Optional: persisted breaker state
+│
+├── gse (schema)                     ← Ghana Stock Exchange (implemented)
+│   ├── symbols                      ← Canonical symbol registry
+│   ├── historical_prices            ← Long-term OHLCV
+│   ├── cached_eod_prices            ← End-of-day snapshots (backup to Redis)
+│   └── data_quality_log             ← Cross-source discrepancy records
+│
+└── {domain} (schema)                ← Each future domain gets its own schema
+    └── ...                              following the same pattern
+```
+
+Note: there are no `users`, `tenants`, or `plans` tables. User management and billing belong to the upstream platform. The MCP platform only stores the data it needs to authenticate and authorise requests: API keys with their scopes.
+
+### 14.3 Core Schema DDL
+
+```sql
+CREATE SCHEMA IF NOT EXISTS core;
+
+-- api_keys: the only auth table the MCP platform owns
+-- Upstream platform (SaaS, admin CLI, config loader) writes rows here
+CREATE TABLE core.api_keys (
+    key_id          TEXT PRIMARY KEY,            -- e.g. 'key_abc123'
+    key_hash        TEXT NOT NULL UNIQUE,        -- SHA-256 of the plaintext key
+    owner_id        TEXT NOT NULL,               -- Opaque ID from upstream (user, service account, etc.)
+    owner_label     TEXT NOT NULL,               -- Human-readable, e.g. "Kwame's Claude Desktop"
+    scopes          TEXT[] NOT NULL,             -- e.g. '{gse:*:read,gse:stock_history:read}'
+    rate_limit_rpm  INTEGER NOT NULL DEFAULT 60, -- Requests per minute
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    expires_at      TIMESTAMPTZ,                 -- NULL = no expiry
+    last_used_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_api_keys_hash ON core.api_keys (key_hash);
+CREATE INDEX idx_api_keys_owner ON core.api_keys (owner_id);
+
+-- audit_log: every tool invocation across all domains
+CREATE TABLE core.audit_log (
+    id              BIGSERIAL PRIMARY KEY,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    domain          TEXT NOT NULL,
+    key_id          TEXT NOT NULL,
+    owner_id        TEXT NOT NULL,
+    owner_label     TEXT NOT NULL,
+    transport       TEXT NOT NULL,
+    tool_name       TEXT NOT NULL,
+    tool_params     JSONB NOT NULL,
+    data_source     TEXT NOT NULL,
+    cache_hit       BOOLEAN NOT NULL,
+    response_ms     INTEGER NOT NULL,
+    error           TEXT,
+    ip_address      INET
+);
+
+CREATE INDEX idx_audit_timestamp ON core.audit_log (timestamp DESC);
+CREATE INDEX idx_audit_domain    ON core.audit_log (domain, timestamp DESC);
+CREATE INDEX idx_audit_key       ON core.audit_log (key_id, timestamp DESC);
+CREATE INDEX idx_audit_owner     ON core.audit_log (owner_id, timestamp DESC);
+CREATE INDEX idx_audit_tool      ON core.audit_log (tool_name, timestamp DESC);
+
+-- domain_registry: tracks active domains and their config metadata
+CREATE TABLE core.domain_registry (
+    domain          TEXT PRIMARY KEY,
+    display_name    TEXT NOT NULL,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    config_json     JSONB,                          -- e.g. trading hours, cache TTLs
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Optional: persisted circuit breaker state (skip in Phase 1)
+CREATE TABLE core.circuit_breaker_state (
+    domain          TEXT NOT NULL,
+    adapter_name    TEXT NOT NULL,
+    state           TEXT NOT NULL DEFAULT 'closed',
+    failure_count   INTEGER NOT NULL DEFAULT 0,
+    last_failure_at TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (domain, adapter_name)
+);
+```
+
+### 14.4 GSE Schema DDL
+
+```sql
+CREATE SCHEMA IF NOT EXISTS gse;
+
+-- Canonical symbol registry, populated from kwayisi /equities endpoint
+CREATE TABLE gse.symbols (
+    ticker          TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    sector          TEXT,
+    kwayisi_code    TEXT,                            -- kwayisi's internal code if different
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    listed_date     DATE,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Historical OHLCV prices (populated from internal data or nightly adapter scrapes)
+CREATE TABLE gse.historical_prices (
+    symbol          TEXT NOT NULL REFERENCES gse.symbols(ticker),
+    date            DATE NOT NULL,
+    open            NUMERIC(12,4),
+    high            NUMERIC(12,4),
+    low             NUMERIC(12,4),
+    close           NUMERIC(12,4) NOT NULL,
+    volume          BIGINT NOT NULL DEFAULT 0,
+    source          TEXT NOT NULL,                   -- 'kwayisi', 'gse_official', 'manual'
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (symbol, date)
+);
+
+CREATE INDEX idx_hist_symbol_date ON gse.historical_prices (symbol, date DESC);
+
+-- End-of-day price cache (backup to Redis; also serves as the internal_db adapter's source)
+CREATE TABLE gse.cached_eod_prices (
+    symbol          TEXT NOT NULL REFERENCES gse.symbols(ticker),
+    date            DATE NOT NULL,
+    price           NUMERIC(12,4) NOT NULL,
+    change          NUMERIC(12,4) NOT NULL DEFAULT 0,
+    change_pct      NUMERIC(8,4) NOT NULL DEFAULT 0,
+    volume          BIGINT NOT NULL DEFAULT 0,
+    source          TEXT NOT NULL,
+    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (symbol, date)
+);
+
+-- Phase 3: log discrepancies when cross-validating across adapters
+CREATE TABLE gse.data_quality_log (
+    id              BIGSERIAL PRIMARY KEY,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    symbol          TEXT NOT NULL,
+    field           TEXT NOT NULL,                   -- 'price', 'volume', etc.
+    source_a        TEXT NOT NULL,
+    value_a         NUMERIC(12,4) NOT NULL,
+    source_b        TEXT NOT NULL,
+    value_b         NUMERIC(12,4) NOT NULL,
+    discrepancy_pct NUMERIC(8,4) NOT NULL,
+    resolved        BOOLEAN NOT NULL DEFAULT FALSE
+);
+```
+
+### 14.5 Schema Permissions
+
+Two classes of database role for the MCP platform itself. The upstream platform writes to `core.api_keys` using its own credentials (outside this product's scope).
+
+- **Domain services** (`mcp_gse_service`, etc.): Read `core.api_keys` to resolve keys, write `core.audit_log`, full access to their own domain schema.
+- **Analytics** (`mcp_analytics`): Read-only on everything for dashboards and reporting.
+
+```sql
+-- Domain service role (one per domain)
+CREATE ROLE mcp_gse_service LOGIN PASSWORD '...';
+-- Future: CREATE ROLE mcp_{domain}_service LOGIN PASSWORD '...';
+
+-- Analytics role (read-only across everything)
+CREATE ROLE mcp_analytics LOGIN PASSWORD '...';
+
+-- Core schema: domain services can read api_keys, write audit
+GRANT USAGE ON SCHEMA core TO mcp_gse_service;
+GRANT SELECT ON core.api_keys TO mcp_gse_service;
+GRANT UPDATE (last_used_at) ON core.api_keys TO mcp_gse_service;
+GRANT SELECT, INSERT ON core.audit_log TO mcp_gse_service;
+GRANT USAGE ON SEQUENCE core.audit_log_id_seq TO mcp_gse_service;
+GRANT SELECT ON core.domain_registry TO mcp_gse_service;
+
+-- Domain isolation: each service owns only its schema
+GRANT ALL ON SCHEMA gse TO mcp_gse_service;
+GRANT ALL ON ALL TABLES IN SCHEMA gse TO mcp_gse_service;
+ALTER DEFAULT PRIVILEGES IN SCHEMA gse GRANT ALL ON TABLES TO mcp_gse_service;
+
+-- Repeat the above pattern for each new domain
+
+-- Analytics: read-only everywhere
+GRANT USAGE ON SCHEMA core, gse TO mcp_analytics;
+GRANT SELECT ON ALL TABLES IN SCHEMA core, gse TO mcp_analytics;
+```
+
+### 14.6 Alembic Migration Strategy
+
+Migrations split into two tracks that run in order: core first, then domain.
+
+```
+alembic/
+├── alembic.ini
+├── env.py                          # Runs core migrations, then each domain
+├── core/
+│   └── versions/
+│       ├── 001_create_api_keys.py
+│       ├── 002_create_audit_log.py
+│       └── 003_create_domain_registry.py
+└── domains/
+    └── gse/
+        └── versions/
+            ├── 001_create_symbols.py
+            ├── 002_create_historical_prices.py
+            └── 003_create_cached_eod_prices.py
+    # Future domains get their own folder here
+```
+
+Each migration explicitly targets its schema using the `schema=` parameter in `op.create_table()`:
+
+```python
+# alembic/domains/gse/versions/001_create_symbols.py
+
+from alembic import op
+import sqlalchemy as sa
+
+
+def upgrade():
+    op.execute("CREATE SCHEMA IF NOT EXISTS gse")
+    op.create_table(
+        "symbols",
+        sa.Column("ticker", sa.Text, primary_key=True),
+        sa.Column("name", sa.Text, nullable=False),
+        sa.Column("sector", sa.Text),
+        sa.Column("kwayisi_code", sa.Text),
+        sa.Column("is_active", sa.Boolean, server_default="true"),
+        sa.Column("listed_date", sa.Date),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        schema="gse",
+    )
+
+
+def downgrade():
+    op.drop_table("symbols", schema="gse")
+```
+
+Core migrations run with a shared migration role that has `CREATE SCHEMA` privileges. Domain migrations run with the domain's service role (which already has `ALL ON SCHEMA {domain}`).
+
+### 14.7 Connection Pooling
+
+Each domain server maintains its own SQLAlchemy async engine with a connection pool. Recommended pool settings for Phase 1:
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| `pool_size` | 5 | GSE has ~37 stocks; load is moderate |
+| `max_overflow` | 10 | Absorb bursts during market open |
+| `pool_timeout` | 30s | Fail fast if pool is exhausted |
+| `pool_recycle` | 1800s | Prevent stale connections behind load balancers |
+
+```python
+from sqlalchemy.ext.asyncio import create_async_engine
+
+engine = create_async_engine(
+    settings.database_url,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
+```
+
+### 14.8 The circuit_breaker_state Table
+
+**Phase 1: skip it.** The circuit breaker runs in-memory. When a container restarts, the breaker resets to `CLOSED` and rediscovers adapter availability by trying and failing (or succeeding). For a single container per domain, this is fine.
+
+**When to add it:** If you scale to multiple container replicas per domain, in-memory breakers diverge — replica A might have kwayisi marked `OPEN` while replica B still thinks it's `CLOSED` and keeps hammering a dead upstream. Persisting state to `core.circuit_breaker_state` (or Redis, which is faster for this) lets all replicas share a single view. Add this when you move to horizontal scaling.
+
+---
+
+## 15. Resilience
+
+### 15.1 Circuit Breaker
+
+```python
+# core/mcp_core/utils/circuit_breaker.py
+
+import time
+from enum import Enum
+
+
+class State(Enum):
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 30.0,
+                 name: str = "default"):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.name = name
+        self.state = State.CLOSED
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+
+    @property
+    def is_available(self) -> bool:
+        if self.state == State.CLOSED:
+            return True
+        if self.state == State.OPEN:
+            if time.monotonic() - self.last_failure_time > self.recovery_timeout:
+                self.state = State.HALF_OPEN
+                return True
+            return False
+        return True
+
+    def record_success(self) -> None:
+        self.failure_count = 0
+        self.state = State.CLOSED
+
+    def record_failure(self) -> None:
+        self.failure_count += 1
+        self.last_failure_time = time.monotonic()
+        if self.failure_count >= self.failure_threshold:
+            self.state = State.OPEN
+```
+
+### 15.2 Retry Policy
+
+Individual HTTP requests to external APIs: 3 attempts, base delay 0.5s, max delay 4s, jitter ±200ms. Implemented as an async decorator in `core/mcp_core/utils/retry.py`.
+
+---
+
+## 16. Observability
+
+### 16.1 Logfire
+
+Observability is handled by [Logfire](https://logfire.pydantic.dev/) (Pydantic's OTEL-based observability platform). Logfire provides tracing, metrics, and dashboards in a single service. Since it's built on OpenTelemetry, switching to a self-hosted OTEL + Prometheus + Grafana stack later requires only a configuration change — the instrumentation code stays the same.
+
+### 16.2 Span Attributes
+
+Every tool call creates an OTEL span with these attributes:
+
+| Attribute | Example |
+|-----------|---------|
+| `mcp.domain` | `gse` |
+| `mcp.tool.name` | `gse_get_live_prices` |
+| `mcp.caller.key_id` | `key_abc123` |
+| `mcp.caller.owner_id` | `usr_kwame` |
+| `adapter.name` | `kwayisi` |
+| `cache.hit` | `true` |
+| `response.item_count` | `37` |
+
+Logfire auto-instruments FastAPI (request/response tracing), httpx (outbound adapter calls), and Redis (cache operations). Domain-specific spans are added in tool handlers for business-level visibility.
+
+### 16.3 Health Endpoints
+
+Each domain server exposes:
+
+- `GET /health/live` — 200 if the process is running
+- `GET /health/ready` — 200 if Redis is reachable and at least one adapter passes `health_check()`
+
+---
+
+## 17. Deployment
+
+### 17.1 Dockerfiles
+
+Each domain gets its own Dockerfile. They all follow the same pattern:
+
+```dockerfile
+# deploy/Dockerfile.gse
+
+FROM python:3.11-slim AS base
+WORKDIR /app
+
+# Install core library
+COPY core/ core/
+RUN pip install --no-cache-dir ./core
+
+# Install domain module
+COPY domains/gse/ domains/gse/
+RUN pip install --no-cache-dir ./domains/gse
+
+# Migrations
+COPY alembic/ alembic/
+
+EXPOSE 8080
+CMD ["uvicorn", "gse_mcp.main:app", "--host", "0.0.0.0", "--port", "8080"]
+```
+
+### 17.2 Docker Compose (Local Development)
+
+```yaml
+version: "3.9"
+services:
+  gse:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.gse
+    ports:
+      - "8080:8080"
+    environment:
+      GSE_MCP_REDIS_URL: redis://redis:6379/0
+      GSE_MCP_DATABASE_URL: postgresql+asyncpg://mcp:mcp@postgres:5432/mcp_platform
+      GSE_MCP_LOG_LEVEL: DEBUG
+    depends_on: [redis, postgres]
+
+  # Add more domain services here as needed, following the same pattern
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mcp
+      POSTGRES_PASSWORD: mcp
+      POSTGRES_DB: mcp_platform
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+volumes:
+  pgdata:
+```
+
+### 17.3 Production: Fly.io
+
+Each domain server deploys as a separate Fly app. Redis and Postgres are Fly-managed services shared across apps.
+
+**Fly app per domain:**
+
+```toml
+# fly.toml (GSE domain)
+
+app = "mcp-gse"
+primary_region = "lhr"  # London — closest Fly region to West Africa
+
+[build]
+  dockerfile = "deploy/Dockerfile.gse"
+
+[env]
+  GSE_MCP_TRANSPORT = "streamable-http"
+  GSE_MCP_LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+[[http_service.checks]]
+  path = "/health/ready"
+  interval = 15000        # ms
+  timeout = 5000
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+```
+
+**Managed services:**
+
+```bash
+# Create Postgres (shared across all domain apps)
+fly postgres create --name mcp-platform-db --region lhr
+
+# Attach to the GSE app
+fly postgres attach mcp-platform-db --app mcp-gse
+
+# Create Redis (Upstash, Fly's managed Redis)
+fly redis create --name mcp-platform-cache --region lhr
+
+# Set secrets (not in fly.toml — stored encrypted by Fly)
+fly secrets set GSE_MCP_REDIS_URL="redis://..." --app mcp-gse
+fly secrets set GSE_MCP_DATABASE_URL="postgres://..." --app mcp-gse
+```
+
+**Deploy:**
+
+```bash
+fly deploy --app mcp-gse
+```
+
+**Adding a new domain** is: create a new `fly.toml`, attach the same Postgres and Redis, deploy. Each domain app scales independently.
+
+**Region considerations:** Fly's closest region to Accra is `lhr` (London). If latency matters, consider `jnb` (Johannesburg) for a secondary region. Fly supports multi-region with read replicas for Postgres if needed later.
+
+### 17.4 Claude Desktop Configuration
+
+For users connecting to the GSE server via Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "gse": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--env", "GSE_MCP_TRANSPORT=stdio",
+        "--env", "GSE_MCP_REDIS_URL=redis://host.docker.internal:6379/0",
+        "mcp-platform-gse:latest"
+      ]
+    }
+  }
+}
+```
+
+To connect additional domain servers later, add each as a separate MCP server entry in the same config.
+
+---
+
+## 18. Testing Strategy
+
+### 18.1 Core Unit Tests (`tests/core/`)
+
+- Circuit breaker state transitions (closed → open → half-open → closed)
+- Cache TTL logic with mocked clock (active vs inactive hours)
+- DataSourceManager fallback chain (primary fails → secondary serves)
+- Auth middleware: valid key, expired key, missing scope, revoked key
+- Scope matching: wildcard patterns, exact matches, action-level checks
+- Audit middleware: record written with correct fields
+- Server factory: app bootstraps with health endpoints
+
+### 18.2 Domain Unit Tests (`tests/domains/gse/`)
+
+- Mock kwayisi HTTP responses using `respx`
+- Test each tool handler with known inputs and expected outputs
+- Test symbol mapping: kwayisi codes → canonical tickers
+- Test market summary derivation from `/live` response
+
+### 18.3 Integration Tests
+
+- Spin up Redis + PostgreSQL via `testcontainers-python`
+- Full path: tool call → cache miss → adapter → cache write → response → audit log
+- Verify audit records contain correct domain, tool, caller, latency
+
+### 18.4 Contract Tests
+
+- Record actual kwayisi API responses as JSON fixtures (`tests/domains/gse/fixtures/`)
+- Adapter tests run against fixtures; if kwayisi changes their response shape, tests break
+
+### 18.5 Load Tests
+
+- `locust` simulating 50 concurrent analysts on `gse_get_live_prices`
+- Target: <200ms cache hit, <2s cache miss
+- Verify circuit breaker engages when upstream is slow
+
+---
+
+## 19. Dependencies
+
+```toml
+# core/pyproject.toml
+
+[project]
+name = "mcp-core"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+    "redis[hiredis]>=5.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "logfire[fastapi,httpx,redis]>=3.0.0",
+    "structlog>=24.0.0",
+]
+```
+
+```toml
+# domains/gse/pyproject.toml
+
+[project]
+name = "gse-mcp"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp-core",        # Local path dependency during dev
+]
+```
+
+```toml
+# Root pyproject.toml (dev dependencies + workspace)
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "testcontainers>=4.0",
+    "locust>=2.28",
+    "ruff>=0.4",
+    "ty>=0.1",
+]
+```
+
+---
+
+## 20. Adding a New Domain Module
+
+To add a new domain, follow these steps:
+
+1. **Create the directory:** `domains/{name}/{name}_mcp/`
+
+2. **Define domain models** in `models.py`. These are the Pydantic objects your tools return.
+
+3. **Define the adapter protocol** in `adapters/protocol.py`. Extend `mcp_core.adapters.base.DataAdapter` with your domain-specific methods.
+
+4. **Implement adapters.** One per external data source. Each returns your domain models.
+
+5. **Define tools** in `tools/`. One file per tool. Each tool calls the domain's data service.
+
+6. **Map tool permissions.** For each tool, define the `domain:resource:action` scope. Strip the verb prefix from the tool name to get the resource, use the verb to determine the action. Document the mapping in the tool file:
+
+    | Tool | Scope |
+    |------|-------|
+    | `get_bond_yields` | `gfi:bond_yields:read` |
+    | `set_price_alert` | `gse:price_alert:write` |
+    | `run_backtest` | `gse:backtest:execute` |
+
+7. **Create `config.py`** extending `CoreSettings`. Add domain-specific settings (API URLs, timeouts, active hours). Set `env_prefix` to `{NAME}_MCP_`.
+
+8. **Create `main.py`** wiring adapters → DataSourceManager → Cache → DataService → server factory. This should be ~30 lines.
+
+9. **Create the database schema** in `alembic/domains/{name}/`. Each migration targets `schema="{name}"`.
+
+10. **Create a database role** (`mcp_{name}_service`) with the same permission pattern as GSE.
+
+11. **Write tests** in `tests/domains/{name}/`. Record API fixtures. Mock external calls.
+
+12. **Create Dockerfile** in `deploy/Dockerfile.{name}`.
+
+13. **Add to `docker-compose.yml`** with the domain's port and env vars.
+
+The core library, auth, audit, caching, circuit breaker, observability, and health checks require zero changes.
+
+---
+
+## 21. Phase 3 Additions (Scale)
+
+1. **Bloomberg adapter for GSE** — cross-validate prices. Flag discrepancies above 2%.
+2. **Data quality middleware** — compare across adapters before returning. Disagreement above threshold returns a warning flag.
+3. **Webhook notifications** — alerts when circuit breakers open or sources disagree.
+4. **Multi-region deployment** — active-passive in multiple regions for latency and availability.
+5. **Provisioning API** — optional REST API for upstream platforms to manage API keys programmatically (currently done via direct DB writes).
+6. **Partial wildcards** — support patterns like `gse:*:read` (already supported) and potentially `gse:price_*:read` for resource-level wildcards.
+
+---
+
+## 22. Open Questions
+
+Resolve before implementation:
+
+1. **GSE official feed** — Contact GSE data services (gse.com.gh/data-services) for pricing and endpoint details. Needed for a licensed adapter and for commercial redistribution.
+2. **Data redistribution** — kwayisi's terms are unclear on redistribution. For production use serving data externally, the GSE official feed should be the primary source.
+3. **Upstream integration pattern** — Will upstream platforms write API keys directly to Postgres, or should the MCP platform expose a provisioning API? Direct DB writes are simpler; an API is more portable.
+4. **Additional domains** — Which domains are likely next after GSE? Non-market verticals (logistics, government APIs) would help validate that the core abstractions generalise beyond market data.
+5. **Upstream data source credentials** — Some future adapters will need to authenticate with their upstream APIs (API keys, OAuth tokens, client certificates). The adapter interface supports this today (pass credentials into the constructor), but there's no platform-level pattern yet for how those secrets are stored, rotated, or scoped. Decide when the first authenticated upstream is added: secrets manager (Vault, AWS Secrets Manager), encrypted env vars, or per-user "bring your own credentials" — each has different implications for the adapter and config layers.

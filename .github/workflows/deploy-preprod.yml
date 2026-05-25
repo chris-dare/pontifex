@@ -43,6 +43,5 @@ jobs:
           flyctl deploy \
             --app ${{ vars.FLY_APP_NAME }} \
             --config deploy/fly.gse.toml \
-            --region lhr \
             --ha=false \
             --wait-timeout 120

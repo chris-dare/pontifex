@@ -128,7 +128,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
         run: |
           # Build the DATABASE_URL for the UAT database
-          UAT_DB_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.flycast:5432/$DB_NAME"
+          UAT_DB_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.internal:5432/$DB_NAME"
 
           # Set secrets on the Fly app
           echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL" | flyctl secrets import --app "$FLY_APP"

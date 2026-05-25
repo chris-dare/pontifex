@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_core.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
 from mcp_core.auth.context import set_stdio_caller
@@ -39,11 +40,17 @@ def create_mcp_http_app(
     request; readiness/liveness endpoints sit alongside.
     """
     audit: AuditWriter = DbAuditWriter(settings.database_url)
+    hosts = [h.strip() for h in settings.allowed_hosts.split(",") if h.strip()]
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=bool(hosts),
+        allowed_hosts=hosts,
+    )
     mcp_server = FastMCP(
         name=f"{domain_name}-mcp",
         instructions=instructions,
         stateless_http=True,
         json_response=True,
+        transport_security=transport_security,
     )
     register_tools(mcp_server, audit)
 

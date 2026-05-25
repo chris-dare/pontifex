@@ -134,6 +134,7 @@ jobs:
           echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL" | flyctl secrets import --app "$FLY_APP"
           echo "GSE_MCP_REDIS_URL=${{ env.GSE_MCP_REDIS_URL }}" | flyctl secrets import --app "$FLY_APP"
           echo "GSE_MCP_ENV_PREFIX=uat-pr-${{ github.event.pull_request.number }}" | flyctl secrets import --app "$FLY_APP"
+          echo "GSE_MCP_ALLOWED_HOSTS=$FLY_APP.fly.dev" | flyctl secrets import --app "$FLY_APP"
 
           flyctl deploy \
             --app "$FLY_APP" \

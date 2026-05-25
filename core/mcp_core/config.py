@@ -22,6 +22,13 @@ class CoreSettings(BaseSettings):
 
     logfire_token: str = ""
 
+    # Comma-separated list of allowed Host header values for MCP DNS rebinding
+    # protection.  When non-empty, the MCP transport rejects requests whose
+    # Host header does not match one of these entries (HTTP 421).  Supports
+    # wildcard ports, e.g. "localhost:*".  When empty, protection is disabled
+    # (safe for Bearer-token-only servers).
+    allowed_hosts: str = ""
+
     # stdio-mode local identity (only used when transport == "stdio"; see §11.7).
     # `stdio_scopes` is a comma-separated list of scope patterns, e.g. "gse:*:*".
     stdio_key_id: str = "local"

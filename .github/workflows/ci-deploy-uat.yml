@@ -64,6 +64,7 @@ jobs:
       - name: Create UAT database if needed
         env:
           PGPASSWORD: ${{ env.FLY_POSTGRES_PASSWORD }}
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
         run: |
           # Proxy to Fly Postgres
           flyctl proxy 15432:5432 -a pontifex-mcp-db &
@@ -89,12 +90,11 @@ jobs:
              CREATE SCHEMA IF NOT EXISTS gse AUTHORIZATION $DB_USER;"
 
           kill %1 2>/dev/null || true
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
 
       - name: Run migrations
         env:
           GSE_MCP_DATABASE_URL: postgresql+asyncpg://${{ env.DB_USER }}:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.flycast:5432/${{ env.DB_NAME }}
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
         run: |
           # Run migrations via Fly proxy
           flyctl proxy 15432:5432 -a pontifex-mcp-db &
@@ -105,10 +105,10 @@ jobs:
           uv run alembic -c alembic/alembic.ini -x "sqlalchemy.url=$SYNC_URL" upgrade heads
 
           kill %1 2>/dev/null || true
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
 
       - name: Seed test API key
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
         run: |
           flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
@@ -123,8 +123,6 @@ jobs:
             || echo "Key may already exist — continuing"
 
           kill %1 2>/dev/null || true
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
 
       - name: Inject secrets and deploy
         env:

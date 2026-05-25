@@ -7,15 +7,14 @@ on:
 permissions:
   contents: read
 
-env:
-  FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
-  DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
-  DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
-
 jobs:
   teardown:
     name: Teardown PR #${{ github.event.pull_request.number }}
     runs-on: ubuntu-latest
+    env:
+      FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
+      DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
+      DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
     steps:
       - name: Install Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master

@@ -12,15 +12,14 @@ concurrency:
   group: deploy-uat-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-env:
-  FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
-  DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
-  DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
-
 jobs:
   deploy:
     name: Deploy PR #${{ github.event.pull_request.number }}
     runs-on: ubuntu-latest
+    env:
+      FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
+      DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
+      DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@v4
 

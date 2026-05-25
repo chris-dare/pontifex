@@ -30,6 +30,7 @@ jobs:
       - name: Inject secrets from Doppler into Fly
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           doppler secrets download --no-file --format env-no-quotes \
             | grep '^GSE_MCP_' \

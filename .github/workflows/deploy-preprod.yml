@@ -1,0 +1,47 @@
+name: Deploy Pre-prod
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-preprod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to pre-prod
+    runs-on: ubuntu-latest
+    environment: preprod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install Doppler CLI
+        run: |
+          curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+            "https://cli.doppler.com/install.sh" | sudo sh
+
+      - name: Inject secrets from Doppler into Fly
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
+        run: |
+          doppler secrets download --no-file --format env-no-quotes \
+            | grep '^GSE_MCP_' \
+            | fly secrets import --app ${{ vars.FLY_APP_NAME }}
+
+      - name: Deploy to Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          fly deploy \
+            --app ${{ vars.FLY_APP_NAME }} \
+            --config deploy/fly.gse.toml \
+            --region lhr \
+            --ha=false \
+            --wait-timeout 120

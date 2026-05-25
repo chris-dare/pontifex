@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Container entrypoint: run alembic migrations (HTTP mode only), then dispatch.
+# Container entrypoint.
+# When called with arguments (e.g. docker-compose command override), run those.
+# Otherwise start the MCP server directly.
+# In production, migrations run via Fly's release_command — not here.
 set -euo pipefail
 
-if [ "${GSE_MCP_TRANSPORT:-streamable-http}" = "stdio" ]; then
-    # stdio mode does not require Postgres / Redis; skip migrations.
-    exec uv run --package gse-mcp python -m gse_mcp.main
+if [ $# -gt 0 ]; then
+    exec "$@"
 fi
 
-echo "[entrypoint] running migrations: alembic upgrade heads"
-uv run --package gse-mcp alembic -c alembic/alembic.ini upgrade heads
-
-echo "[entrypoint] starting MCP server (streamable-http)"
 exec uv run --package gse-mcp python -m gse_mcp.main

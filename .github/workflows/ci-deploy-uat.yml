@@ -139,6 +139,7 @@ jobs:
             --app "$FLY_APP" \
             --config deploy/fly.gse.toml \
             --ha=false \
+            --skip-release-command \
             --wait-timeout 120
 
       - name: Comment on PR

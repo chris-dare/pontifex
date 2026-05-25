@@ -8,10 +8,6 @@ permissions:
   contents: read
   pull-requests: write
 
-concurrency:
-  group: deploy-uat-pr-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
-
 jobs:
   deploy:
     name: Deploy PR #${{ github.event.pull_request.number }}

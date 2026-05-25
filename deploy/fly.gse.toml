@@ -3,7 +3,7 @@
 primary_region = "lhr"
 
 [build]
-  dockerfile = "deploy/Dockerfile.gse"
+  dockerfile = "Dockerfile.gse"
 
 [env]
   GSE_MCP_TRANSPORT = "streamable-http"

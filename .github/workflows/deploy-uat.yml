@@ -150,7 +150,7 @@ jobs:
             --wait-timeout 120
 
       - name: Comment on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const appName = process.env.FLY_APP;

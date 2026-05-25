@@ -9,18 +9,17 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: deploy-uat-pr-${{ github.event.pull_request.number }}
+  group: deploy-uat-pr-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
-
-env:
-  FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
-  DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
-  DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
 
 jobs:
   deploy:
     name: Deploy PR #${{ github.event.pull_request.number }}
     runs-on: ubuntu-latest
+    env:
+      FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
+      DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
+      DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,15 +62,15 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
         run: |
-          fly apps list --json | jq -e ".[] | select(.Name == \"$FLY_APP\")" > /dev/null 2>&1 \
-            || fly apps create "$FLY_APP" --org argonauts
+          flyctl apps list --json | jq -e ".[] | select(.Name == \"$FLY_APP\")" > /dev/null 2>&1 \
+            || flyctl apps create "$FLY_APP" --org argonauts
 
       - name: Create UAT database if needed
         env:
           PGPASSWORD: ${{ env.FLY_POSTGRES_PASSWORD }}
         run: |
           # Proxy to Fly Postgres
-          fly proxy 15432:5432 -a pontifex-mcp-db &
+          flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
 
           # Create user and database if they don't exist
@@ -102,7 +101,7 @@ jobs:
           GSE_MCP_DATABASE_URL: postgresql+asyncpg://${{ env.DB_USER }}:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.flycast:5432/${{ env.DB_NAME }}
         run: |
           # Run migrations via Fly proxy
-          fly proxy 15432:5432 -a pontifex-mcp-db &
+          flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
 
           # Alembic needs a sync URL for the proxy
@@ -115,7 +114,7 @@ jobs:
 
       - name: Seed test API key
         run: |
-          fly proxy 15432:5432 -a pontifex-mcp-db &
+          flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
 
           SYNC_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@127.0.0.1:15432/$DB_NAME"
@@ -139,11 +138,11 @@ jobs:
           UAT_DB_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.flycast:5432/$DB_NAME"
 
           # Set secrets on the Fly app
-          echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL" | fly secrets import --app "$FLY_APP"
-          echo "GSE_MCP_REDIS_URL=${{ env.GSE_MCP_REDIS_URL }}" | fly secrets import --app "$FLY_APP"
-          echo "GSE_MCP_ENV_PREFIX=uat-pr-${{ github.event.pull_request.number }}" | fly secrets import --app "$FLY_APP"
+          echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL" | flyctl secrets import --app "$FLY_APP"
+          echo "GSE_MCP_REDIS_URL=${{ env.GSE_MCP_REDIS_URL }}" | flyctl secrets import --app "$FLY_APP"
+          echo "GSE_MCP_ENV_PREFIX=uat-pr-${{ github.event.pull_request.number }}" | flyctl secrets import --app "$FLY_APP"
 
-          fly deploy \
+          flyctl deploy \
             --app "$FLY_APP" \
             --config deploy/fly.gse.toml \
             --region lhr \

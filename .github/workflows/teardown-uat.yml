@@ -7,15 +7,14 @@ on:
 permissions:
   contents: read
 
-env:
-  FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
-  DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
-  DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
-
 jobs:
   teardown:
     name: Teardown PR #${{ github.event.pull_request.number }}
     runs-on: ubuntu-latest
+    env:
+      FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
+      DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
+      DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
     steps:
       - name: Install Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
@@ -24,8 +23,8 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
         run: |
-          fly apps list --json | jq -e ".[] | select(.Name == \"$FLY_APP\")" > /dev/null 2>&1 \
-            && fly apps destroy "$FLY_APP" --yes \
+          flyctl apps list --json | jq -e ".[] | select(.Name == \"$FLY_APP\")" > /dev/null 2>&1 \
+            && flyctl apps destroy "$FLY_APP" --yes \
             || echo "App $FLY_APP not found — skipping"
 
       - name: Drop UAT database
@@ -33,7 +32,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
           PGPASSWORD: ${{ secrets.FLY_POSTGRES_PASSWORD }}
         run: |
-          fly proxy 15432:5432 -a pontifex-mcp-db &
+          flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
 
           # Terminate active connections then drop

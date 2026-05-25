@@ -33,13 +33,13 @@ jobs:
         run: |
           doppler secrets download --no-file --format env-no-quotes \
             | grep '^GSE_MCP_' \
-            | fly secrets import --app ${{ vars.FLY_APP_NAME }}
+            | flyctl secrets import --app ${{ vars.FLY_APP_NAME }}
 
       - name: Deploy to Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          fly deploy \
+          flyctl deploy \
             --app ${{ vars.FLY_APP_NAME }} \
             --config deploy/fly.gse.toml \
             --region lhr \

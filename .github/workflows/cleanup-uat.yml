@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # List all UAT apps
-          APPS=$(fly apps list --json \
+          APPS=$(flyctl apps list --json \
             | jq -r '.[] | select(.Name | startswith("pontifex-mcp-gse-pr-")) | .Name')
 
           if [ -z "$APPS" ]; then
@@ -33,7 +33,7 @@ jobs:
           fi
 
           # Start Fly proxy for DB cleanup
-          fly proxy 15432:5432 -a pontifex-mcp-db &
+          flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
 
           for APP in $APPS; do
@@ -47,7 +47,7 @@ jobs:
             PR_STATE=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUM" --jq '.state' 2>/dev/null || echo "unknown")
 
             # Check app age
-            CREATED=$(fly apps list --json | jq -r ".[] | select(.Name == \"$APP\") | .CreatedAt // empty")
+            CREATED=$(flyctl apps list --json | jq -r ".[] | select(.Name == \"$APP\") | .CreatedAt // empty")
             if [ -n "$CREATED" ]; then
               AGE_HOURS=$(( ($(date +%s) - $(date -d "$CREATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CREATED%%.*}" +%s 2>/dev/null || echo 0)) / 3600 ))
             else
@@ -67,7 +67,7 @@ jobs:
 
             if [ "$SHOULD_TEARDOWN" = true ]; then
               # Destroy app
-              fly apps destroy "$APP" --yes || echo "  Failed to destroy $APP"
+              flyctl apps destroy "$APP" --yes || echo "  Failed to destroy $APP"
 
               # Drop database
               psql -h 127.0.0.1 -p 15432 -U postgres -c \

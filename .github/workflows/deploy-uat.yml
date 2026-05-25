@@ -21,7 +21,7 @@ jobs:
       DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
       DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

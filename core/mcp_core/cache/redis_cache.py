@@ -7,9 +7,9 @@ import redis.asyncio as redis
 class Cache:
     """Prefix-aware, TTL-configurable Redis cache."""
 
-    def __init__(self, redis_url: str, prefix: str) -> None:
+    def __init__(self, redis_url: str, prefix: str, env_prefix: str = "") -> None:
         self.client = redis.from_url(redis_url)
-        self.prefix = prefix
+        self.prefix = f"{env_prefix}:{prefix}" if env_prefix else prefix
 
     def _key(self, key: str) -> str:
         return f"{self.prefix}:{key}"

@@ -1,0 +1,199 @@
+name: Deploy UAT
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: deploy-uat-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
+  DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
+  DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
+
+jobs:
+  deploy:
+    name: Deploy PR #${{ github.event.pull_request.number }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --group dev
+
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install Doppler CLI
+        run: |
+          curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+            "https://cli.doppler.com/install.sh" | sudo sh
+
+      - name: Load UAT secrets from Doppler
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN_UAT }}
+        run: |
+          doppler secrets download --no-file --format env \
+            > "$RUNNER_TEMP/uat.env"
+          # Export secrets we need in subsequent steps
+          set -a
+          source "$RUNNER_TEMP/uat.env"
+          set +a
+          echo "GSE_MCP_DATABASE_URL=$GSE_MCP_DATABASE_URL" >> "$GITHUB_ENV"
+          echo "GSE_MCP_REDIS_URL=$GSE_MCP_REDIS_URL" >> "$GITHUB_ENV"
+          echo "UAT_API_KEY_PLAINTEXT=$UAT_API_KEY_PLAINTEXT" >> "$GITHUB_ENV"
+          echo "FLY_POSTGRES_PASSWORD=$FLY_POSTGRES_PASSWORD" >> "$GITHUB_ENV"
+          echo "FLY_POSTGRES_HOSTNAME=$FLY_POSTGRES_HOSTNAME" >> "$GITHUB_ENV"
+
+      - name: Create Fly app if needed
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+        run: |
+          fly apps list --json | jq -e ".[] | select(.Name == \"$FLY_APP\")" > /dev/null 2>&1 \
+            || fly apps create "$FLY_APP" --org argonauts
+
+      - name: Create UAT database if needed
+        env:
+          PGPASSWORD: ${{ env.FLY_POSTGRES_PASSWORD }}
+        run: |
+          # Proxy to Fly Postgres
+          fly proxy 15432:5432 -a pontifex-mcp-db &
+          sleep 4
+
+          # Create user and database if they don't exist
+          psql -h 127.0.0.1 -p 15432 -U postgres -tc \
+            "SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER'" \
+            | grep -q 1 \
+            || psql -h 127.0.0.1 -p 15432 -U postgres -c \
+              "CREATE USER $DB_USER WITH PASSWORD '${{ env.FLY_POSTGRES_PASSWORD }}';"
+
+          psql -h 127.0.0.1 -p 15432 -U postgres -tc \
+            "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" \
+            | grep -q 1 \
+            || psql -h 127.0.0.1 -p 15432 -U postgres -c \
+              "CREATE DATABASE $DB_NAME OWNER $DB_USER;"
+
+          # Create schemas
+          PGPASSWORD="${{ env.FLY_POSTGRES_PASSWORD }}" \
+            psql -h 127.0.0.1 -p 15432 -U postgres -d "$DB_NAME" -c \
+            "CREATE SCHEMA IF NOT EXISTS core AUTHORIZATION $DB_USER;
+             CREATE SCHEMA IF NOT EXISTS gse AUTHORIZATION $DB_USER;"
+
+          kill %1 2>/dev/null || true
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+
+      - name: Run migrations
+        env:
+          GSE_MCP_DATABASE_URL: postgresql+asyncpg://${{ env.DB_USER }}:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.flycast:5432/${{ env.DB_NAME }}
+        run: |
+          # Run migrations via Fly proxy
+          fly proxy 15432:5432 -a pontifex-mcp-db &
+          sleep 4
+
+          # Alembic needs a sync URL for the proxy
+          SYNC_URL="postgresql://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@127.0.0.1:15432/$DB_NAME"
+          uv run alembic -c alembic/alembic.ini -x "sqlalchemy.url=$SYNC_URL" upgrade heads
+
+          kill %1 2>/dev/null || true
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+
+      - name: Seed test API key
+        run: |
+          fly proxy 15432:5432 -a pontifex-mcp-db &
+          sleep 4
+
+          SYNC_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@127.0.0.1:15432/$DB_NAME"
+          GSE_MCP_DATABASE_URL="$SYNC_URL" uv run python scripts/create_api_key.py \
+            --owner-id usr_uat \
+            --owner-label "UAT PR #${{ github.event.pull_request.number }}" \
+            --scopes "gse:*:*" \
+            --key-plaintext "${{ env.UAT_API_KEY_PLAINTEXT }}" \
+            --key-id "key_uat_pr_${{ github.event.pull_request.number }}" \
+            || echo "Key may already exist — continuing"
+
+          kill %1 2>/dev/null || true
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+
+      - name: Inject secrets and deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+        run: |
+          # Build the DATABASE_URL for the UAT database
+          UAT_DB_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.flycast:5432/$DB_NAME"
+
+          # Set secrets on the Fly app
+          echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL" | fly secrets import --app "$FLY_APP"
+          echo "GSE_MCP_REDIS_URL=${{ env.GSE_MCP_REDIS_URL }}" | fly secrets import --app "$FLY_APP"
+          echo "GSE_MCP_ENV_PREFIX=uat-pr-${{ github.event.pull_request.number }}" | fly secrets import --app "$FLY_APP"
+
+          fly deploy \
+            --app "$FLY_APP" \
+            --config deploy/fly.gse.toml \
+            --region lhr \
+            --ha=false \
+            --wait-timeout 120
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const appName = process.env.FLY_APP;
+            const url = `https://${appName}.fly.dev`;
+            const body = [
+              `### 🚀 UAT deployed`,
+              ``,
+              `| | |`,
+              `|---|---|`,
+              `| **URL** | ${url}/mcp |`,
+              `| **Health** | ${url}/health/ready |`,
+              `| **App** | \`${appName}\` |`,
+              ``,
+              `Test with:`,
+              '```bash',
+              `curl ${url}/mcp \\`,
+              `  -H "Authorization: Bearer $UAT_KEY" \\`,
+              `  -H "Content-Type: application/json" \\`,
+              `  -H "Accept: application/json, text/event-stream" \\`,
+              `  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`,
+              '```',
+            ].join('\n');
+
+            // Update existing comment or create new one
+            const {data: comments} = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('UAT deployed'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

@@ -37,7 +37,7 @@ manager = DataSourceManager(
     cb_recovery_timeout=settings.cb_recovery_timeout_seconds,
 )
 
-cache = Cache(settings.redis_url, prefix="gse")
+cache = Cache(settings.redis_url, prefix="gse", env_prefix=settings.env_prefix)
 data_service = GSEDataService(manager, cache)
 
 

@@ -1,0 +1,51 @@
+name: Teardown UAT
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+env:
+  FLY_APP: pontifex-mcp-gse-pr-${{ github.event.pull_request.number }}
+  DB_NAME: pontifex_uat_pr_${{ github.event.pull_request.number }}
+  DB_USER: pontifex_uat_pr_${{ github.event.pull_request.number }}
+
+jobs:
+  teardown:
+    name: Teardown PR #${{ github.event.pull_request.number }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Destroy Fly app
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+        run: |
+          fly apps list --json | jq -e ".[] | select(.Name == \"$FLY_APP\")" > /dev/null 2>&1 \
+            && fly apps destroy "$FLY_APP" --yes \
+            || echo "App $FLY_APP not found — skipping"
+
+      - name: Drop UAT database
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+          PGPASSWORD: ${{ secrets.FLY_POSTGRES_PASSWORD }}
+        run: |
+          fly proxy 15432:5432 -a pontifex-mcp-db &
+          sleep 4
+
+          # Terminate active connections then drop
+          psql -h 127.0.0.1 -p 15432 -U postgres -c \
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+             WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();" \
+            || true
+
+          psql -h 127.0.0.1 -p 15432 -U postgres -c \
+            "DROP DATABASE IF EXISTS $DB_NAME;"
+
+          psql -h 127.0.0.1 -p 15432 -U postgres -c \
+            "DROP USER IF EXISTS $DB_USER;"
+
+          kill %1 2>/dev/null || true

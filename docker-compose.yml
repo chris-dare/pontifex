@@ -9,6 +9,11 @@ services:
       GSE_MCP_REDIS_URL: redis://redis:6379/0
       GSE_MCP_DATABASE_URL: postgresql+asyncpg://mcp:mcp@postgres:5432/mcp_platform
       GSE_MCP_LOG_LEVEL: DEBUG
+    # Local dev: run migrations before starting the server.
+    # In production, migrations run via Fly's release_command (see deploy/fly.gse.toml).
+    command: >
+      sh -c "uv run --package gse-mcp alembic -c alembic/alembic.ini upgrade heads &&
+             uv run --package gse-mcp python -m gse_mcp.main"
     depends_on:
       redis:
         condition: service_healthy

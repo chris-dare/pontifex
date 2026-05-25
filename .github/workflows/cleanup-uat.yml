@@ -1,0 +1,85 @@
+name: Cleanup stale UAT environments
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # midnight UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cleanup:
+    name: Cleanup stale UAT apps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Find and teardown stale UAT apps
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+          PGPASSWORD: ${{ secrets.FLY_POSTGRES_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # List all UAT apps
+          APPS=$(fly apps list --json \
+            | jq -r '.[] | select(.Name | startswith("pontifex-mcp-gse-pr-")) | .Name')
+
+          if [ -z "$APPS" ]; then
+            echo "No UAT apps found."
+            exit 0
+          fi
+
+          # Start Fly proxy for DB cleanup
+          fly proxy 15432:5432 -a pontifex-mcp-db &
+          sleep 4
+
+          for APP in $APPS; do
+            PR_NUM=$(echo "$APP" | sed 's/pontifex-mcp-gse-pr-//')
+            DB_NAME="pontifex_uat_pr_${PR_NUM}"
+            DB_USER="pontifex_uat_pr_${PR_NUM}"
+
+            echo "--- Checking $APP (PR #$PR_NUM) ---"
+
+            # Check if PR is still open
+            PR_STATE=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUM" --jq '.state' 2>/dev/null || echo "unknown")
+
+            # Check app age
+            CREATED=$(fly apps list --json | jq -r ".[] | select(.Name == \"$APP\") | .CreatedAt // empty")
+            if [ -n "$CREATED" ]; then
+              AGE_HOURS=$(( ($(date +%s) - $(date -d "$CREATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CREATED%%.*}" +%s 2>/dev/null || echo 0)) / 3600 ))
+            else
+              AGE_HOURS=0
+            fi
+
+            SHOULD_TEARDOWN=false
+            if [ "$PR_STATE" != "open" ]; then
+              echo "  PR #$PR_NUM is $PR_STATE — tearing down"
+              SHOULD_TEARDOWN=true
+            elif [ "$AGE_HOURS" -gt 24 ]; then
+              echo "  App is ${AGE_HOURS}h old — tearing down"
+              SHOULD_TEARDOWN=true
+            else
+              echo "  PR #$PR_NUM is open and app is ${AGE_HOURS}h old — keeping"
+            fi
+
+            if [ "$SHOULD_TEARDOWN" = true ]; then
+              # Destroy app
+              fly apps destroy "$APP" --yes || echo "  Failed to destroy $APP"
+
+              # Drop database
+              psql -h 127.0.0.1 -p 15432 -U postgres -c \
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+                 WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();" 2>/dev/null || true
+              psql -h 127.0.0.1 -p 15432 -U postgres -c \
+                "DROP DATABASE IF EXISTS $DB_NAME;" || echo "  Failed to drop $DB_NAME"
+              psql -h 127.0.0.1 -p 15432 -U postgres -c \
+                "DROP USER IF EXISTS $DB_USER;" || echo "  Failed to drop $DB_USER"
+
+              echo "  Cleaned up $APP"
+            fi
+          done
+
+          kill %1 2>/dev/null || true

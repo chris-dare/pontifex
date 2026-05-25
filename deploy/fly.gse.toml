@@ -1,0 +1,36 @@
+# Fly.io deployment config for the GSE MCP server.
+# App name is set via `fly deploy --app <name>` — not hardcoded here.
+primary_region = "lhr"
+
+[build]
+  dockerfile = "deploy/Dockerfile.gse"
+
+[env]
+  GSE_MCP_TRANSPORT = "streamable-http"
+  GSE_MCP_LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "15s"
+  method = "GET"
+  path = "/health/live"
+
+[deploy]
+  release_command = "uv run --package gse-mcp alembic -c alembic/alembic.ini upgrade heads"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

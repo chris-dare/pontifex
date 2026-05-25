@@ -18,6 +18,8 @@ class CoreSettings(BaseSettings):
     api_key_cache_ttl_seconds: int = 300
     api_key_hash_algorithm: str = "sha256"
 
+    env_prefix: str = ""
+
     logfire_token: str = ""
 
     # stdio-mode local identity (only used when transport == "stdio"; see §11.7).

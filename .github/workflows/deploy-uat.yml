@@ -9,7 +9,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: deploy-uat-pr-${{ github.event.pull_request.number }}
+  group: deploy-uat-pr-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:

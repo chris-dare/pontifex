@@ -114,7 +114,7 @@ jobs:
 
       - name: Provision test API key
         run: |
-          KEY_HASH=$(echo -n "sk_test_ci" | sha256sum | cut -d' ' -f1)
+          KEY_HASH=$(echo -n "sk_live_ci_smoke" | sha256sum | cut -d' ' -f1)
           docker compose exec -T postgres psql -U mcp -d mcp_platform -c "
             INSERT INTO core.api_keys (key_id, key_hash, owner_id, owner_label, scopes, rate_limit_rpm, is_active)
             VALUES ('key_ci', '${KEY_HASH}', 'usr_ci', 'CI smoke test', ARRAY['gse:*:*'], 120, true)
@@ -124,7 +124,7 @@ jobs:
       - name: MCP initialize
         run: |
           curl -fsS http://localhost:8080/mcp \
-            -H "Authorization: Bearer sk_test_ci" \
+            -H "Authorization: Bearer sk_live_ci_smoke" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"0.1.0"}}}' \
@@ -133,7 +133,7 @@ jobs:
       - name: MCP tools/list
         run: |
           TOOLS=$(curl -fsS http://localhost:8080/mcp \
-            -H "Authorization: Bearer sk_test_ci" \
+            -H "Authorization: Bearer sk_live_ci_smoke" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')

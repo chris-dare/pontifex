@@ -10,30 +10,71 @@ from starlette.types import ASGIApp
 
 from mcp_core.auth.api_keys import APIKeyResolver
 from mcp_core.auth.identity import CallerIdentity
+from mcp_core.auth.jwt_validator import JWTValidationError, JWTValidator
 
 # Public/unauthenticated paths. Auth middleware skips these.
-_PUBLIC_PATHS: tuple[str, ...] = ("/health/live", "/health/ready", "/docs", "/openapi.json")
+_PUBLIC_PATHS: tuple[str, ...] = (
+    "/health/live",
+    "/health/ready",
+    "/docs",
+    "/openapi.json",
+    "/.well-known/oauth-protected-resource",
+)
+
+# API-key plaintext format: `sk_live_<random>`.  Tokens with any other shape
+# are treated as JWTs (see §11 of the solution design).
+_API_KEY_PREFIX = "sk_live_"
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Extracts API key from `Authorization: Bearer <key>` and resolves to CallerIdentity.
+    """Resolve a Bearer token to a :class:`CallerIdentity`.
 
-    Stores the resolved identity at `request.state.caller`. Returns 401 if the key is
-    missing or invalid. Scope enforcement happens later in tool handlers.
+    Two paths share the same identity contract:
+
+    * Tokens prefixed with ``sk_live_`` are looked up via :class:`APIKeyResolver`
+      (Redis-first, Postgres-fallback hash check).
+    * Anything else is validated as an OAuth 2.1 JWT via :class:`JWTValidator`
+      against the configured JWKS endpoint.
+
+    Either way the resolved identity lands at ``request.state.caller``.  Returns
+    401 if the token is missing or invalid; scope enforcement happens in tool
+    handlers.
+
+    When ``jwt_validator`` is ``None`` only the API-key path is active — any
+    non-prefixed token is rejected.
     """
 
     def __init__(
         self,
         app: ASGIApp,
-        redis_url: str,
-        database_url: str,
+        redis_url: str | None = None,
+        database_url: str | None = None,
         cache_ttl: int = 300,
+        jwt_validator: JWTValidator | None = None,
+        api_key_resolver: APIKeyResolver | None = None,
     ) -> None:
+        """Build the middleware.
+
+        Either pass an explicit ``api_key_resolver`` (preferred in tests), or
+        provide ``redis_url`` + ``database_url`` so the middleware can wire
+        one up itself.
+        """
         super().__init__(app)
-        self.redis_client = redis.from_url(redis_url)
-        self.engine = create_async_engine(database_url, pool_size=5, max_overflow=10)
-        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
-        self.resolver = APIKeyResolver(self.redis_client, self.session_factory, cache_ttl=cache_ttl)
+        if api_key_resolver is not None:
+            self.resolver = api_key_resolver
+        else:
+            if redis_url is None or database_url is None:
+                raise ValueError(
+                    "AuthMiddleware needs redis_url + database_url, "
+                    "or an explicit api_key_resolver."
+                )
+            self.redis_client = redis.from_url(redis_url)
+            self.engine = create_async_engine(database_url, pool_size=5, max_overflow=10)
+            self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+            self.resolver = APIKeyResolver(
+                self.redis_client, self.session_factory, cache_ttl=cache_ttl
+            )
+        self.jwt_validator = jwt_validator
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in _PUBLIC_PATHS:
@@ -41,14 +82,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            return _auth_error("Missing 'Authorization: Bearer <key>' header.")
-        raw_key = auth_header[len("Bearer ") :].strip()
-        if not raw_key:
-            return _auth_error("Empty API key.")
+            return _auth_error("Missing 'Authorization: Bearer <token>' header.")
+        raw_token = auth_header[len("Bearer ") :].strip()
+        if not raw_token:
+            return _auth_error("Empty bearer token.")
 
-        identity = await self.resolver.resolve(raw_key)
-        if identity is None:
-            return _auth_error("Invalid, expired, or revoked API key.")
+        if raw_token.startswith(_API_KEY_PREFIX):
+            identity = await self.resolver.resolve(raw_token)
+            if identity is None:
+                return _auth_error("Invalid, expired, or revoked API key.")
+        else:
+            if self.jwt_validator is None:
+                return _auth_error("JWT auth not configured on this server; use an API key.")
+            try:
+                identity = await self.jwt_validator.validate(raw_token)
+            except JWTValidationError as exc:
+                return _auth_error(str(exc))
 
         request.state.caller = identity
         return await call_next(request)

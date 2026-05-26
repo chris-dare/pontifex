@@ -20,6 +20,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp_core.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
 from mcp_core.auth.context import set_stdio_caller
 from mcp_core.auth.identity import CallerIdentity
+from mcp_core.auth.jwt_validator import JWTValidator
 from mcp_core.config import CoreSettings
 from mcp_core.middleware.auth import AuthMiddleware
 from mcp_core.observability.logfire_setup import setup_logfire
@@ -54,10 +55,23 @@ def create_mcp_http_app(
     )
     register_tools(mcp_server, audit)
 
+    jwt_validator: JWTValidator | None = None
+    if settings.auth_jwks_url:
+        jwt_validator = JWTValidator(
+            jwks_url=settings.auth_jwks_url,
+            issuer=settings.auth_issuer,
+            audience=settings.auth_audience,
+            scopes_claim=settings.auth_scopes_claim,
+        )
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         async with mcp_server.session_manager.run():
-            yield
+            try:
+                yield
+            finally:
+                if jwt_validator is not None:
+                    await jwt_validator.aclose()
 
     app = FastAPI(title=f"{domain_name}-mcp", lifespan=lifespan)
 
@@ -69,6 +83,7 @@ def create_mcp_http_app(
         redis_url=settings.redis_url,
         database_url=settings.database_url,
         cache_ttl=settings.api_key_cache_ttl_seconds,
+        jwt_validator=jwt_validator,
     )
 
     @app.get("/health/live")
@@ -78,6 +93,20 @@ def create_mcp_http_app(
     @app.get("/health/ready")
     async def readiness() -> dict[str, Any]:
         return await health_check()
+
+    # OAuth 2.0 Protected Resource Metadata (RFC 9728).  MCP clients fetch
+    # this to discover the authorization server.  Only exposed when JWT auth
+    # is configured; API-key-only deployments return 404.
+    @app.get("/.well-known/oauth-protected-resource")
+    async def oauth_protected_resource() -> dict[str, Any]:
+        if not settings.auth_jwks_url:
+            return {"error": "JWT auth not configured."}
+        authz_server = settings.auth_authorization_server or settings.auth_issuer
+        return {
+            "resource": settings.auth_audience,
+            "authorization_servers": [authz_server] if authz_server else [],
+            "bearer_methods_supported": ["header"],
+        }
 
     # Mount FastMCP's Streamable HTTP ASGI app. Endpoint becomes /mcp.
     app.mount("/", mcp_server.streamable_http_app())

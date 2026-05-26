@@ -29,6 +29,25 @@ class CoreSettings(BaseSettings):
     # (safe for Bearer-token-only servers).
     allowed_hosts: str = ""
 
+    # OAuth 2.1 / OIDC settings (provider-agnostic).  When `auth_jwks_url` is
+    # set, tokens that don't start with `sk_live_` are validated as JWTs against
+    # the provider's JWKS.  When empty, only API-key auth is enabled.
+    #
+    #   auth_jwks_url       URL of the provider's JWKS endpoint.
+    #   auth_issuer         Expected `iss` claim value.
+    #   auth_audience       Expected `aud` claim value (the MCP platform).
+    #   auth_scopes_claim   Name of the JWT claim that carries scopes.
+    #                       Auth0 -> "permissions"; Entra -> "scp" or "roles";
+    #                       Clerk -> provider-specific.
+    #   auth_authorization_server
+    #                       Authorization server URL advertised by the
+    #                       /.well-known/oauth-protected-resource document.
+    auth_jwks_url: str = ""
+    auth_issuer: str = ""
+    auth_audience: str = ""
+    auth_scopes_claim: str = "permissions"
+    auth_authorization_server: str = ""
+
     # stdio-mode local identity (only used when transport == "stdio"; see §11.7).
     # `stdio_scopes` is a comma-separated list of scope patterns, e.g. "gse:*:*".
     stdio_key_id: str = "local"

@@ -82,37 +82,52 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            return _auth_error("Missing 'Authorization: Bearer <token>' header.")
+            return self._auth_error(request, "Missing 'Authorization: Bearer <token>' header.")
         raw_token = auth_header[len("Bearer ") :].strip()
         if not raw_token:
-            return _auth_error("Empty bearer token.")
+            return self._auth_error(request, "Empty bearer token.")
 
         if raw_token.startswith(_API_KEY_PREFIX):
             identity = await self.resolver.resolve(raw_token)
             if identity is None:
-                return _auth_error("Invalid, expired, or revoked API key.")
+                return self._auth_error(request, "Invalid, expired, or revoked API key.")
         else:
             if self.jwt_validator is None:
-                return _auth_error("JWT auth not configured on this server; use an API key.")
+                return self._auth_error(
+                    request, "JWT auth not configured on this server; use an API key."
+                )
             try:
                 identity = await self.jwt_validator.validate(raw_token)
             except JWTValidationError as exc:
-                return _auth_error(str(exc))
+                return self._auth_error(request, str(exc))
 
         request.state.caller = identity
         return await call_next(request)
 
+    def _auth_error(self, request: Request, message: str) -> JSONResponse:
+        """Build a 401 response with an MCP-spec-compliant WWW-Authenticate header.
 
-def _auth_error(message: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=401,
-        content={
-            "error_code": "auth_failed",
-            "message": message,
-            "status": 401,
-            "retry": False,
-        },
-    )
+        Per RFC 9728 + the MCP authorization spec, clients that don't yet have
+        credentials discover the protected resource metadata via the
+        ``resource_metadata`` parameter of the ``WWW-Authenticate`` header on
+        a 401.  We always emit the ``Bearer`` realm; the ``resource_metadata``
+        URL is only included when JWT auth is configured (otherwise there's no
+        OAuth flow to discover).
+        """
+        challenge = 'Bearer realm="mcp", error="invalid_token"'
+        if self.jwt_validator is not None:
+            base = f"{request.url.scheme}://{request.url.netloc}"
+            challenge += f', resource_metadata="{base}/.well-known/oauth-protected-resource"'
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error_code": "auth_failed",
+                "message": message,
+                "status": 401,
+                "retry": False,
+            },
+            headers={"WWW-Authenticate": challenge},
+        )
 
 
 def get_caller(request: Request) -> CallerIdentity:

@@ -129,3 +129,32 @@ def test_invalid_api_key_returns_401():
     )
     assert response.status_code == 401
     assert response.json()["error_code"] == "auth_failed"
+
+
+def test_401_includes_www_authenticate_with_resource_metadata():
+    """Spec-compliant MCP clients bootstrap from the WWW-Authenticate header.
+
+    When JWT auth is configured, the header must include a
+    `resource_metadata` parameter pointing at our protected-resource
+    metadata endpoint so the client can discover the authorization server
+    without out-of-band config.
+    """
+    jwt_validator = AsyncMock()
+    client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
+    response = client.get("/mcp")
+    assert response.status_code == 401
+    challenge = response.headers["www-authenticate"]
+    assert challenge.startswith("Bearer ")
+    assert 'realm="mcp"' in challenge
+    assert "/.well-known/oauth-protected-resource" in challenge
+
+
+def test_401_omits_resource_metadata_when_jwt_not_configured():
+    """If JWT auth is off, there's no OAuth flow to discover; emit a bare
+    Bearer challenge without resource_metadata."""
+    client = _build_client(api_key_identity=None, jwt_validator=None)
+    response = client.get("/mcp")
+    assert response.status_code == 401
+    challenge = response.headers["www-authenticate"]
+    assert challenge.startswith("Bearer ")
+    assert "resource_metadata" not in challenge

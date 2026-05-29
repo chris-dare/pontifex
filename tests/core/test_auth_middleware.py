@@ -69,16 +69,28 @@ def jwt_caller() -> CallerIdentity:
     )
 
 
-def test_sk_live_prefix_uses_api_key_resolver(api_key_caller):
-    """Tokens with the sk_live_ prefix go through APIKeyResolver."""
+@pytest.mark.parametrize(
+    "token",
+    [
+        "sk_live_abcdef123",  # production
+        "sk_uat_abcdef123",  # ephemeral UAT app
+        "sk_test_ci_smoke",  # CI smoke test
+    ],
+)
+def test_sk_prefix_uses_api_key_resolver(api_key_caller, token):
+    """Any `sk_<env>_` token routes to the API-key resolver, not the JWT path.
+
+    Environment-specific prefixes (sk_live_, sk_uat_, sk_test_) must all be
+    recognised as API keys so per-environment key conventions keep working.
+    """
     client = _build_client(api_key_identity=api_key_caller, jwt_validator=None)
-    response = client.get("/mcp", headers={"Authorization": "Bearer sk_live_abcdef123"})
+    response = client.get("/mcp", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert response.json()["owner_id"] == "usr_apikey"
 
 
 def test_non_prefixed_token_routes_to_jwt_validator(jwt_caller):
-    """Tokens without sk_live_ go through JWTValidator (not the API-key path)."""
+    """JWTs (base64url JSON, always start with `ey`) go through JWTValidator."""
     jwt_validator = AsyncMock()
     jwt_validator.validate = AsyncMock(return_value=jwt_caller)
     client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)

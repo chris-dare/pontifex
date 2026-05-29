@@ -21,9 +21,11 @@ _PUBLIC_PATHS: tuple[str, ...] = (
     "/.well-known/oauth-protected-resource",
 )
 
-# API-key plaintext format: `sk_live_<random>`.  Tokens with any other shape
-# are treated as JWTs (see §11 of the solution design).
-_API_KEY_PREFIX = "sk_live_"
+# API-key plaintext is prefixed `sk_<env>_<random>` — `sk_live_` in prod,
+# `sk_uat_` / `sk_test_` in ephemeral and CI environments.  We route on the
+# `sk_` prefix alone: OAuth JWTs are base64url-encoded JSON, so they always
+# begin with `ey` (the encoding of `{"`) and never collide with `sk_`.
+_API_KEY_PREFIX = "sk_"
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

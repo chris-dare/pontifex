@@ -115,10 +115,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         a 401.  We always emit the ``Bearer`` realm; the ``resource_metadata``
         URL is only included when JWT auth is configured (otherwise there's no
         OAuth flow to discover).
+
+        Behind a TLS-terminating proxy (Fly, most PaaS), the app sees plain
+        HTTP, so we trust ``X-Forwarded-Proto`` for the scheme.  This keeps
+        the advertised metadata URL ``https://`` — OAuth clients reject a
+        non-HTTPS ``resource_metadata``.
         """
         challenge = 'Bearer realm="mcp", error="invalid_token"'
         if self.jwt_validator is not None:
-            base = f"{request.url.scheme}://{request.url.netloc}"
+            scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+            host = request.headers.get("x-forwarded-host", request.url.netloc)
+            base = f"{scheme}://{host}"
             challenge += f', resource_metadata="{base}/.well-known/oauth-protected-resource"'
         return JSONResponse(
             status_code=401,

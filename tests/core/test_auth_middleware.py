@@ -161,6 +161,25 @@ def test_401_includes_www_authenticate_with_resource_metadata():
     assert "/.well-known/oauth-protected-resource" in challenge
 
 
+def test_resource_metadata_url_honors_forwarded_proto():
+    """Behind a TLS-terminating proxy the app sees http; the advertised
+    metadata URL must still be https (clients reject non-HTTPS metadata)."""
+    jwt_validator = AsyncMock()
+    client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
+    response = client.get(
+        "/mcp",
+        headers={
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": "pontifex-mcp-gse-pr-18.fly.dev",
+        },
+    )
+    challenge = response.headers["www-authenticate"]
+    assert (
+        'resource_metadata="https://pontifex-mcp-gse-pr-18.fly.dev'
+        "/.well-known/oauth-protected-resource\"" in challenge
+    )
+
+
 def test_401_omits_resource_metadata_when_jwt_not_configured():
     """If JWT auth is off, there's no OAuth flow to discover; emit a bare
     Bearer challenge without resource_metadata."""

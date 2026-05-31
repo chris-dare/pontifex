@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -95,15 +95,22 @@ def create_mcp_http_app(
         return await health_check()
 
     # OAuth 2.0 Protected Resource Metadata (RFC 9728).  MCP clients fetch
-    # this to discover the authorization server.  Only exposed when JWT auth
-    # is configured; API-key-only deployments return 404.
+    # this to discover the authorization server.  Only meaningful when JWT
+    # auth is configured.
     @app.get("/.well-known/oauth-protected-resource")
-    async def oauth_protected_resource() -> dict[str, Any]:
+    async def oauth_protected_resource(request: Request) -> dict[str, Any]:
         if not settings.auth_jwks_url:
             return {"error": "JWT auth not configured."}
         authz_server = settings.auth_authorization_server or settings.auth_issuer
+        # RFC 9728: `resource` is the protected resource's *own* canonical URI
+        # (the MCP endpoint), NOT the authorization-server API audience.  MCP
+        # clients validate this against the URL they connected to, so it must
+        # be derived from the request.  Honour X-Forwarded-* — behind Fly's TLS
+        # edge the app sees plain HTTP.
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.url.netloc)
         return {
-            "resource": settings.auth_audience,
+            "resource": f"{scheme}://{host}/mcp",
             "authorization_servers": [authz_server] if authz_server else [],
             "bearer_methods_supported": ["header"],
         }

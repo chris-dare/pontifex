@@ -69,16 +69,28 @@ def jwt_caller() -> CallerIdentity:
     )
 
 
-def test_sk_live_prefix_uses_api_key_resolver(api_key_caller):
-    """Tokens with the sk_live_ prefix go through APIKeyResolver."""
+@pytest.mark.parametrize(
+    "token",
+    [
+        "sk_live_abcdef123",  # production
+        "sk_uat_abcdef123",  # ephemeral UAT app
+        "sk_test_ci_smoke",  # CI smoke test
+    ],
+)
+def test_sk_prefix_uses_api_key_resolver(api_key_caller, token):
+    """Any `sk_<env>_` token routes to the API-key resolver, not the JWT path.
+
+    Environment-specific prefixes (sk_live_, sk_uat_, sk_test_) must all be
+    recognised as API keys so per-environment key conventions keep working.
+    """
     client = _build_client(api_key_identity=api_key_caller, jwt_validator=None)
-    response = client.get("/mcp", headers={"Authorization": "Bearer sk_live_abcdef123"})
+    response = client.get("/mcp", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert response.json()["owner_id"] == "usr_apikey"
 
 
 def test_non_prefixed_token_routes_to_jwt_validator(jwt_caller):
-    """Tokens without sk_live_ go through JWTValidator (not the API-key path)."""
+    """JWTs (base64url JSON, always start with `ey`) go through JWTValidator."""
     jwt_validator = AsyncMock()
     jwt_validator.validate = AsyncMock(return_value=jwt_caller)
     client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
@@ -129,3 +141,51 @@ def test_invalid_api_key_returns_401():
     )
     assert response.status_code == 401
     assert response.json()["error_code"] == "auth_failed"
+
+
+def test_401_includes_www_authenticate_with_resource_metadata():
+    """Spec-compliant MCP clients bootstrap from the WWW-Authenticate header.
+
+    When JWT auth is configured, the header must include a
+    `resource_metadata` parameter pointing at our protected-resource
+    metadata endpoint so the client can discover the authorization server
+    without out-of-band config.
+    """
+    jwt_validator = AsyncMock()
+    client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
+    response = client.get("/mcp")
+    assert response.status_code == 401
+    challenge = response.headers["www-authenticate"]
+    assert challenge.startswith("Bearer ")
+    assert 'realm="mcp"' in challenge
+    assert "/.well-known/oauth-protected-resource" in challenge
+
+
+def test_resource_metadata_url_honors_forwarded_proto():
+    """Behind a TLS-terminating proxy the app sees http; the advertised
+    metadata URL must still be https (clients reject non-HTTPS metadata)."""
+    jwt_validator = AsyncMock()
+    client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
+    response = client.get(
+        "/mcp",
+        headers={
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": "pontifex-mcp-gse-pr-18.fly.dev",
+        },
+    )
+    challenge = response.headers["www-authenticate"]
+    assert (
+        'resource_metadata="https://pontifex-mcp-gse-pr-18.fly.dev'
+        "/.well-known/oauth-protected-resource\"" in challenge
+    )
+
+
+def test_401_omits_resource_metadata_when_jwt_not_configured():
+    """If JWT auth is off, there's no OAuth flow to discover; emit a bare
+    Bearer challenge without resource_metadata."""
+    client = _build_client(api_key_identity=None, jwt_validator=None)
+    response = client.get("/mcp")
+    assert response.status_code == 401
+    challenge = response.headers["www-authenticate"]
+    assert challenge.startswith("Bearer ")
+    assert "resource_metadata" not in challenge

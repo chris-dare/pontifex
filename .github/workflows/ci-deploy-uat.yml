@@ -131,13 +131,13 @@ jobs:
           # Build the DATABASE_URL for the UAT database
           UAT_DB_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.internal:5432/$DB_NAME"
 
-          # Bulk-import every GSE_MCP_* var from Doppler (this picks up the
-          # GSE_MCP_AUTH_* OAuth settings automatically, mirroring pre-prod),
-          # then override the values specific to this ephemeral PR app.
-          # A single `flyctl secrets import` keeps it to one deploy.
+          # Bulk-import the GSE_MCP_* domain settings and the unprefixed AUTH_*
+          # OAuth settings from Doppler (mirroring pre-prod), then override the
+          # values specific to this ephemeral PR app.  A single
+          # `flyctl secrets import` keeps it to one deploy.
           {
             doppler secrets download --no-file --format env-no-quotes \
-              | grep '^GSE_MCP_' \
+              | grep -E '^(GSE_MCP_|AUTH_)' \
               | grep -vE '^GSE_MCP_(DATABASE_URL|ENV_PREFIX|ALLOWED_HOSTS)='
             echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL"
             echo "GSE_MCP_ENV_PREFIX=uat-pr-${{ github.event.pull_request.number }}"

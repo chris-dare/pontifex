@@ -45,8 +45,8 @@ class CoreSettings(BaseSettings):
     public_base_url: str = Field(default="", validation_alias="PUBLIC_BASE_URL")
 
     # OAuth 2.1 / OIDC settings (provider-agnostic).  When `auth_jwks_url` is
-    # set, tokens that don't start with `sk_live_` are validated as JWTs against
-    # the provider's JWKS.  When empty, only API-key auth is enabled.
+    # set, tokens that don't start with `sk_` are validated as JWTs against the
+    # provider's JWKS.  When empty, only API-key auth is enabled.
     #
     #   auth_jwks_url       URL of the provider's JWKS endpoint.
     #   auth_issuer         Expected `iss` claim value.
@@ -57,11 +57,14 @@ class CoreSettings(BaseSettings):
     #   auth_authorization_server
     #                       Authorization server URL advertised by the
     #                       /.well-known/oauth-protected-resource document.
-    auth_jwks_url: str = ""
-    auth_issuer: str = ""
-    auth_audience: str = ""
-    auth_scopes_claim: str = "permissions"
-    auth_authorization_server: str = ""
+    # These are infrastructure-level (which IdP backs the deployment), not
+    # domain settings, so — like `public_base_url` — they read from bare,
+    # unprefixed `AUTH_*` env vars regardless of a domain's `env_prefix`.
+    auth_jwks_url: str = Field(default="", validation_alias="AUTH_JWKS_URL")
+    auth_issuer: str = Field(default="", validation_alias="AUTH_ISSUER")
+    auth_audience: str = Field(default="", validation_alias="AUTH_AUDIENCE")
+    auth_scopes_claim: str = Field(default="permissions", validation_alias="AUTH_SCOPES_CLAIM")
+    auth_authorization_server: str = Field(default="", validation_alias="AUTH_AUTHORIZATION_SERVER")
 
     # stdio-mode local identity (only used when transport == "stdio"; see §11.7).
     # `stdio_scopes` is a comma-separated list of scope patterns, e.g. "gse:*:*".

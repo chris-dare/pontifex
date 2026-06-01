@@ -133,7 +133,7 @@ jobs:
 
           # Bulk-import every GSE_MCP_* var from Doppler (this picks up the
           # GSE_MCP_AUTH_* OAuth settings automatically, mirroring pre-prod),
-          # then override the three values specific to this ephemeral PR app.
+          # then override the values specific to this ephemeral PR app.
           # A single `flyctl secrets import` keeps it to one deploy.
           {
             doppler secrets download --no-file --format env-no-quotes \
@@ -142,6 +142,8 @@ jobs:
             echo "GSE_MCP_DATABASE_URL=$UAT_DB_URL"
             echo "GSE_MCP_ENV_PREFIX=uat-pr-${{ github.event.pull_request.number }}"
             echo "GSE_MCP_ALLOWED_HOSTS=$FLY_APP.fly.dev"
+            # PUBLIC_BASE_URL is read without the GSE_MCP_ prefix; set per PR app.
+            echo "PUBLIC_BASE_URL=https://$FLY_APP.fly.dev"
           } | flyctl secrets import --app "$FLY_APP"
 
           flyctl deploy \

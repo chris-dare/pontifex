@@ -1,4 +1,7 @@
+from pydantic import Field, HttpUrl, TypeAdapter, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_HTTP_URL = TypeAdapter(HttpUrl)
 
 
 class CoreSettings(BaseSettings):
@@ -29,6 +32,18 @@ class CoreSettings(BaseSettings):
     # (safe for Bearer-token-only servers).
     allowed_hosts: str = ""
 
+    # The server's canonical public base URL (e.g.
+    # "https://pontifex-mcp-gse-preprod.fly.dev"), advertised verbatim in the
+    # OAuth discovery documents — the `resource` field and the
+    # `WWW-Authenticate` challenge.  OAuth resource identifiers must be a single
+    # stable value, and a configured URL is immune to `X-Forwarded-*` spoofing.
+    # When empty, the discovery URL is derived from the request (local/dev).
+    #
+    # This is an infrastructure concern (where the app is deployed), not a
+    # domain one, so it reads from a bare `PUBLIC_BASE_URL` — the alias bypasses
+    # a domain's `env_prefix`, so the var name is the same for any MCP app.
+    public_base_url: str = Field(default="", validation_alias="PUBLIC_BASE_URL")
+
     # OAuth 2.1 / OIDC settings (provider-agnostic).  When `auth_jwks_url` is
     # set, tokens that don't start with `sk_live_` are validated as JWTs against
     # the provider's JWKS.  When empty, only API-key auth is enabled.
@@ -55,4 +70,15 @@ class CoreSettings(BaseSettings):
     stdio_owner_label: str = "Local stdio"
     stdio_scopes: str = ""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    @field_validator("public_base_url")
+    @classmethod
+    def _validate_public_base_url(cls, v: str) -> str:
+        """Reject a malformed `public_base_url` at load time; empty is allowed."""
+        if v:
+            try:
+                _HTTP_URL.validate_python(v)
+            except ValidationError as exc:
+                raise ValueError(f"public_base_url is not a valid URL: {v!r}") from exc
+        return v
+
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)

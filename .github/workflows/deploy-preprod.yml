@@ -32,8 +32,10 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          # GSE_MCP_* are the domain-prefixed settings; PUBLIC_BASE_URL is an
+          # infrastructure-level var read without the prefix (see CoreSettings).
           doppler secrets download --no-file --format env-no-quotes \
-            | grep '^GSE_MCP_' \
+            | grep -E '^(GSE_MCP_|PUBLIC_BASE_URL=)' \
             | flyctl secrets import --app ${{ vars.FLY_APP_NAME }}
 
       - name: Deploy to Fly

@@ -19,6 +19,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_core.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
 from mcp_core.auth.context import set_stdio_caller
+from mcp_core.auth.discovery import external_base_url
 from mcp_core.auth.identity import CallerIdentity
 from mcp_core.auth.jwt_validator import JWTValidator
 from mcp_core.config import CoreSettings
@@ -84,6 +85,8 @@ def create_mcp_http_app(
         database_url=settings.database_url,
         cache_ttl=settings.api_key_cache_ttl_seconds,
         jwt_validator=jwt_validator,
+        public_base_url=settings.public_base_url,
+        allowed_hosts=settings.allowed_hosts,
     )
 
     @app.get("/health/live")
@@ -104,13 +107,13 @@ def create_mcp_http_app(
         authz_server = settings.auth_authorization_server or settings.auth_issuer
         # RFC 9728: `resource` is the protected resource's *own* canonical URI
         # (the MCP endpoint), NOT the authorization-server API audience.  MCP
-        # clients validate this against the URL they connected to, so it must
-        # be derived from the request.  Honour X-Forwarded-* — behind Fly's TLS
-        # edge the app sees plain HTTP.
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("x-forwarded-host", request.url.netloc)
+        # clients validate this against the URL they connected to.  The host
+        # comes from the configured `public_base_url` (or a request fallback
+        # pinned to `allowed_hosts`), so a spoofed X-Forwarded-Host can't change
+        # the advertised resource identifier.
+        base = external_base_url(request, settings.public_base_url, settings.allowed_hosts)
         return {
-            "resource": f"{scheme}://{host}/mcp",
+            "resource": f"{base}/mcp",
             "authorization_servers": [authz_server] if authz_server else [],
             "bearer_methods_supported": ["header"],
         }

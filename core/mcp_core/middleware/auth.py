@@ -9,6 +9,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from mcp_core.auth.api_keys import APIKeyResolver
+from mcp_core.auth.discovery import external_base_url
 from mcp_core.auth.identity import CallerIdentity
 from mcp_core.auth.jwt_validator import JWTValidationError, JWTValidator
 
@@ -54,14 +55,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
         cache_ttl: int = 300,
         jwt_validator: JWTValidator | None = None,
         api_key_resolver: APIKeyResolver | None = None,
+        public_base_url: str = "",
+        allowed_hosts: str = "",
     ) -> None:
         """Build the middleware.
 
         Either pass an explicit ``api_key_resolver`` (preferred in tests), or
-        provide ``redis_url`` + ``database_url`` so the middleware can wire
-        one up itself.
+        provide ``redis_url`` + ``database_url`` so the middleware can wire one
+        up itself.  ``public_base_url`` / ``allowed_hosts`` are passed through to
+        :func:`external_base_url` to pin the host advertised in the
+        ``WWW-Authenticate`` challenge.
         """
         super().__init__(app)
+        self.public_base_url = public_base_url
+        self.allowed_hosts = allowed_hosts
         if api_key_resolver is not None:
             self.resolver = api_key_resolver
         else:
@@ -116,16 +123,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         URL is only included when JWT auth is configured (otherwise there's no
         OAuth flow to discover).
 
-        Behind a TLS-terminating proxy (Fly, most PaaS), the app sees plain
-        HTTP, so we trust ``X-Forwarded-Proto`` for the scheme.  This keeps
-        the advertised metadata URL ``https://`` — OAuth clients reject a
-        non-HTTPS ``resource_metadata``.
+        The advertised host comes from :func:`external_base_url`, which prefers
+        the configured ``public_base_url`` and otherwise only honours
+        ``X-Forwarded-Host`` when it matches ``allowed_hosts`` — so a client
+        can't poison the discovery URL with an attacker-controlled host.
         """
         challenge = 'Bearer realm="mcp", error="invalid_token"'
         if self.jwt_validator is not None:
-            scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-            host = request.headers.get("x-forwarded-host", request.url.netloc)
-            base = f"{scheme}://{host}"
+            base = external_base_url(request, self.public_base_url, self.allowed_hosts)
             challenge += f', resource_metadata="{base}/.well-known/oauth-protected-resource"'
         return JSONResponse(
             status_code=401,

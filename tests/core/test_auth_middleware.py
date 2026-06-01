@@ -28,6 +28,8 @@ def _build_client(
     *,
     api_key_identity: CallerIdentity | None,
     jwt_validator: Any | None,
+    public_base_url: str = "",
+    allowed_hosts: str = "",
 ) -> TestClient:
     """Build a Starlette app with AuthMiddleware wired to mock dependencies."""
 
@@ -43,6 +45,8 @@ def _build_client(
         AuthMiddleware,
         api_key_resolver=resolver,
         jwt_validator=jwt_validator,
+        public_base_url=public_base_url,
+        allowed_hosts=allowed_hosts,
     )
     return TestClient(app)
 
@@ -161,11 +165,33 @@ def test_401_includes_www_authenticate_with_resource_metadata():
     assert "/.well-known/oauth-protected-resource" in challenge
 
 
-def test_resource_metadata_url_honors_forwarded_proto():
-    """Behind a TLS-terminating proxy the app sees http; the advertised
-    metadata URL must still be https (clients reject non-HTTPS metadata)."""
+def test_resource_metadata_url_uses_configured_public_base_url():
+    """When public_base_url is set it's advertised verbatim — even a spoofed
+    forwarded host can't change it, since the request isn't consulted."""
     jwt_validator = AsyncMock()
-    client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
+    client = _build_client(
+        api_key_identity=None,
+        jwt_validator=jwt_validator,
+        public_base_url="https://pontifex-mcp-gse-preprod.fly.dev",
+    )
+    response = client.get("/mcp", headers={"X-Forwarded-Host": "attacker.example"})
+    challenge = response.headers["www-authenticate"]
+    assert "attacker.example" not in challenge
+    assert (
+        'resource_metadata="https://pontifex-mcp-gse-preprod.fly.dev'
+        '/.well-known/oauth-protected-resource"' in challenge
+    )
+
+
+def test_resource_metadata_url_uses_trusted_forwarded_host():
+    """Fallback (no public_base_url): a forwarded host in allowed_hosts is
+    honoured, and the advertised URL is https (behind TLS the app sees http)."""
+    jwt_validator = AsyncMock()
+    client = _build_client(
+        api_key_identity=None,
+        jwt_validator=jwt_validator,
+        allowed_hosts="pontifex-mcp-gse-pr-18.fly.dev",
+    )
     response = client.get(
         "/mcp",
         headers={
@@ -176,7 +202,31 @@ def test_resource_metadata_url_honors_forwarded_proto():
     challenge = response.headers["www-authenticate"]
     assert (
         'resource_metadata="https://pontifex-mcp-gse-pr-18.fly.dev'
-        "/.well-known/oauth-protected-resource\"" in challenge
+        '/.well-known/oauth-protected-resource"' in challenge
+    )
+
+
+def test_resource_metadata_url_ignores_spoofed_forwarded_host():
+    """Fallback (no public_base_url): a forwarded host NOT in allowed_hosts is
+    ignored — the discovery URL falls back to the real Host header (here the
+    TestClient's `testserver`), never the attacker's."""
+    jwt_validator = AsyncMock()
+    client = _build_client(
+        api_key_identity=None,
+        jwt_validator=jwt_validator,
+        allowed_hosts="pontifex-mcp-gse-preprod.fly.dev",
+    )
+    response = client.get(
+        "/mcp",
+        headers={
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": "attacker.example",
+        },
+    )
+    challenge = response.headers["www-authenticate"]
+    assert "attacker.example" not in challenge
+    assert (
+        'resource_metadata="https://testserver/.well-known/oauth-protected-resource"' in challenge
     )
 
 

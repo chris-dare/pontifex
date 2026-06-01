@@ -13,12 +13,13 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_core.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
 from mcp_core.auth.context import set_stdio_caller
+from mcp_core.auth.discovery import external_base_url
 from mcp_core.auth.identity import CallerIdentity
 from mcp_core.auth.jwt_validator import JWTValidator
 from mcp_core.config import CoreSettings
@@ -84,6 +85,8 @@ def create_mcp_http_app(
         database_url=settings.database_url,
         cache_ttl=settings.api_key_cache_ttl_seconds,
         jwt_validator=jwt_validator,
+        public_base_url=settings.public_base_url,
+        allowed_hosts=settings.allowed_hosts,
     )
 
     @app.get("/health/live")
@@ -95,15 +98,22 @@ def create_mcp_http_app(
         return await health_check()
 
     # OAuth 2.0 Protected Resource Metadata (RFC 9728).  MCP clients fetch
-    # this to discover the authorization server.  Only exposed when JWT auth
-    # is configured; API-key-only deployments return 404.
+    # this to discover the authorization server.  Only meaningful when JWT
+    # auth is configured.
     @app.get("/.well-known/oauth-protected-resource")
-    async def oauth_protected_resource() -> dict[str, Any]:
+    async def oauth_protected_resource(request: Request) -> dict[str, Any]:
         if not settings.auth_jwks_url:
             return {"error": "JWT auth not configured."}
         authz_server = settings.auth_authorization_server or settings.auth_issuer
+        # RFC 9728: `resource` is the protected resource's *own* canonical URI
+        # (the MCP endpoint), NOT the authorization-server API audience.  MCP
+        # clients validate this against the URL they connected to.  The host
+        # comes from the configured `public_base_url` (or a request fallback
+        # pinned to `allowed_hosts`), so a spoofed X-Forwarded-Host can't change
+        # the advertised resource identifier.
+        base = external_base_url(request, settings.public_base_url, settings.allowed_hosts)
         return {
-            "resource": settings.auth_audience,
+            "resource": f"{base}/mcp",
             "authorization_servers": [authz_server] if authz_server else [],
             "bearer_methods_supported": ["header"],
         }

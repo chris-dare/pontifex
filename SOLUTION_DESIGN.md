@@ -1014,13 +1014,18 @@ All domains share a single Redis instance. Key collision is impossible because o
 
 ### 11.1 Principle
 
-The MCP platform authenticates API keys and enforces permission scopes. It does not manage users, billing, or plans. An upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions API keys by writing to `core.api_keys`. The MCP platform is a read-only consumer of that data.
+The MCP platform authenticates callers and enforces permission scopes. It does not manage users, billing, or plans. It accepts **two credential types**, and both resolve to the same `CallerIdentity` and flow through the same scope enforcement:
 
-This makes the platform reusable: embed it in a SaaS product, deploy it inside a bank, or run it from a local config file. The auth contract is the same in every case.
+1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. The platform is a read-only consumer of `core.api_keys`, which an upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions.
+2. **OAuth 2.1 access tokens, represented as JWTs** (RFC 9068; §11.9–11.13) — bearer tokens minted by an external OIDC provider (Auth0, Microsoft Entra, Clerk, Keycloak, …) for interactive MCP clients (Claude Desktop, Cursor, …) that log the end-user in through a browser. (OAuth itself permits opaque access tokens; this platform validates the JWT profile.)
+
+The middleware picks the path by token shape (§11.10) and emits an identical `CallerIdentity` either way, so scopes (§11.2), enforcement (§11.6), and audit (§12) are the same regardless of how the caller authenticated.
+
+This keeps the platform reusable: embed it in a SaaS product, deploy it inside a bank, run it from a local config file, or front it with any OIDC provider. The auth contract is the same in every case.
 
 ### 11.2 Permission Scopes
 
-Each API key carries a list of permission scopes that define exactly which tools it can call. Scopes use the colon-separated `domain:resource:action` pattern from the MCP ecosystem.
+Each resolved identity carries a list of permission scopes that define exactly which tools it can call. Scopes use the colon-separated `domain:resource:action` pattern from the MCP ecosystem.
 
 **Mapping tools to scopes:** Strip the verb prefix from the tool name — that gives you the resource. The verb tells you the action. `get_live_prices` → resource `live_prices`, action `read`. Future tools that write or mutate data would use `write` or `execute`.
 
@@ -1050,7 +1055,7 @@ A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data
 
 ### 11.3 API Key Format and Storage
 
-**Key format:** `sk_live_` prefix + 32 random bytes, base62-encoded. The upstream platform generates keys, stores the SHA-256 hash in `core.api_keys` along with the scopes, and shows the plaintext to the user once.
+**Key format:** `sk_<env>_` prefix + 32 random bytes, base62-encoded — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The upstream platform generates keys, stores the SHA-256 hash in `core.api_keys` along with the scopes, and shows the plaintext to the user once.
 
 **Key record:**
 
@@ -1072,7 +1077,7 @@ class APIKeyRecord:
 
 ### 11.4 CallerIdentity
 
-When a key is resolved, the MCP server works with a `CallerIdentity` — a thin, scope-aware object. No plan tiers, no roles, no tenant hierarchy. Just: who is this, what can they call, and how fast.
+When a credential is resolved, the MCP server works with a `CallerIdentity` — a thin, scope-aware object. No plan tiers, no roles, no tenant hierarchy. Just: who is this, what can they call, and how fast.
 
 ```python
 # core/mcp_core/middleware/auth.py
@@ -1218,6 +1223,86 @@ await db.execute(
 # Return raw_key to the user — shown once, never stored in plaintext
 print(f"Your API key: {raw_key}")
 ```
+
+### 11.9 OAuth 2.1 Authentication (JWT access tokens)
+
+For interactive MCP clients, the platform validates OAuth 2.1 access tokens in JWT form (RFC 9068) minted by an external OIDC provider. The platform is a pure **resource server**: it never mints tokens, runs no login UI, and stores no client records. It validates the JWT and maps its claims to a `CallerIdentity`.
+
+Validation (`core/mcp_core/auth/jwt_validator.py`):
+
+- Fetch and cache the provider's JWKS (1 h TTL; refetch once on key rotation).
+- Verify the signature using asymmetric algorithms only — `RS*`, `ES*`, `PS*`. The HMAC family and `alg: none` are rejected, so a stolen JWKS document can't be used to forge tokens.
+- Require `iss`, `aud`, `exp`, and `sub`; reject the token if any is missing or fails its check. `nbf` and `iat` are validated for timing *when present* but not required — most access tokens (Auth0's included) don't issue `nbf`, and requiring it would reject otherwise-valid tokens.
+- Extract scopes from a configurable claim, accepting both space-delimited strings (OAuth `scope`) and arrays (Auth0 `permissions`, Entra `roles`).
+
+The resulting `CallerIdentity` is identical in shape to the API-key one: `owner_id` comes from `sub`, `scopes` from the configured claim, `transport = "http"`. Everything downstream is unaware of which path produced it.
+
+### 11.10 Dual-Path Middleware
+
+A single middleware routes each `Authorization: Bearer <token>` to the right resolver by token shape:
+
+```python
+# core/mcp_core/middleware/auth.py (excerpt)
+
+if raw_token.startswith("sk_"):
+    identity = await self.api_key_resolver.resolve(raw_token)   # §11.5
+else:
+    identity = await self.jwt_validator.validate(raw_token)     # §11.9
+```
+
+API-key plaintext is prefixed `sk_<env>_…` (`sk_live_` in prod, `sk_uat_` / `sk_test_` in ephemeral and CI environments). OAuth JWTs are base64url-encoded JSON, so they always begin with `ey` and never collide with `sk_`. Both branches produce the same `CallerIdentity`; scope checks, audit, and rate limiting are path-agnostic. When no JWT validator is configured, only the API-key path is active and any non-`sk_` token is rejected.
+
+### 11.11 OAuth Discovery (RFC 9728)
+
+So that a client holding no credentials can bootstrap, the server advertises where to authenticate:
+
+1. An unauthenticated request gets `401` with a challenge header:
+
+   ```
+   WWW-Authenticate: Bearer realm="mcp", error="invalid_token",
+     resource_metadata="https://<host>/.well-known/oauth-protected-resource"
+   ```
+
+2. `GET /.well-known/oauth-protected-resource` returns the protected-resource metadata:
+
+   ```json
+   {
+     "resource": "https://<host>/mcp",
+     "authorization_servers": ["https://your-provider.example/"],
+     "bearer_methods_supported": ["header"]
+   }
+   ```
+
+   `resource` is the MCP server's own canonical URL (RFC 9728 — *not* the authorization-server audience). It's resolved by `core/mcp_core/auth/discovery.py`, which prefers an explicit configured `public_base_url` (the bare `PUBLIC_BASE_URL` env var) and advertises it verbatim. A configured value is the correct design — an OAuth resource identifier is meant to be a single stable value — and it's immune to header spoofing because the request is never consulted. When unset (local/dev), the URL is derived from the request, honouring `X-Forwarded-Host`/`-Proto` but trusting a forwarded host only when it appears in `allowed_hosts`, so a client can't poison the discovery URL with an attacker-controlled host. The client then reads the provider's own OIDC discovery document to find the authorize and token endpoints.
+
+These endpoints are only meaningful when JWT auth is configured; an API-key-only deployment emits a bare `Bearer` challenge with no `resource_metadata`.
+
+### 11.12 Provider-Agnostic Configuration
+
+The platform is not tied to any one IdP. A handful of settings point it at any OIDC-compliant provider; switching providers is a config change, not a code change.
+
+Most settings carry the domain's `env_prefix` — `GSESettings` sets `env_prefix="GSE_MCP_"`, so e.g. the database URL is read from `GSE_MCP_DATABASE_URL`. But the auth/IdP settings and the canonical URL are **infrastructure-level** (which provider backs the deployment, where it's hosted), not domain concerns, so they read from **bare, unprefixed** env vars via `validation_alias`. The var names are therefore the same for any MCP app, regardless of its domain prefix:
+
+```
+AUTH_JWKS_URL=https://your-provider.example/.well-known/jwks.json
+AUTH_ISSUER=https://your-provider.example/
+AUTH_AUDIENCE=<resource-server identifier the JWT's `aud` must carry>
+AUTH_SCOPES_CLAIM=permissions                            # Auth0; Entra: scp|roles; Clerk: provider-specific
+AUTH_AUTHORIZATION_SERVER=https://your-provider.example/  # advertised in the discovery metadata
+PUBLIC_BASE_URL=https://<this-deployment's-host>          # canonical URL for discovery (§11.11)
+```
+
+Pre-prod stores these in Doppler; UAT imports `AUTH_*` from Doppler and sets `PUBLIC_BASE_URL` per ephemeral app in the deploy workflow. Everything about how the resource server **validates a token** — JWKS, issuer/audience checks, scope extraction, discovery metadata — is provider-agnostic.
+
+### 11.13 Client Registration Is the Deployer's Choice
+
+How an MCP client obtains a `client_id` is a property of the **authorization server**, not the resource server. The platform stays out of it and works with whatever the deployer's provider allows:
+
+- **Pre-registered client** — the deployer registers one OAuth app and hands clients its `client_id`. Works with any client that accepts a client_id (e.g. Claude Desktop's connector UI). Simplest; requires no platform code.
+- **Dynamic Client Registration (DCR)** — clients self-register for true zero-config. Whether it works depends on the provider: some let DCR clients access custom APIs, others (e.g. Auth0) restrict custom APIs to first-party clients. Bridging a restrictive provider needs a provider-specific registration proxy, which the platform deliberately does **not** bundle — it would couple the otherwise provider-agnostic core to one IdP's admin API.
+- **Client ID Metadata Documents (CIMD)** — the emerging direction: the `client_id` is itself a URL resolving to the client's metadata, removing registration entirely. Still draft-stage with limited provider support.
+
+Because the resource server only ever validates the resulting JWT, the platform is forward-compatible with all three — the registration mechanism can change without any change to Pontifex.
 
 ---
 

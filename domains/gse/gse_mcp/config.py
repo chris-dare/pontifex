@@ -10,4 +10,4 @@ class GSESettings(CoreSettings):
     gse_official_base_url: str = ""
     gse_official_api_key: str = ""
 
-    model_config = SettingsConfigDict(env_prefix="GSE_MCP_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="GSE_MCP_", extra="ignore", populate_by_name=True)

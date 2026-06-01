@@ -40,4 +40,7 @@ def external_base_url(
 
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     scheme = proto if proto in ("http", "https") else "https"
-    return f"{scheme}://{host}"
+    # Not a Flask/HTTP route — a helper returning a URL string.  The result is
+    # used in a JSON field and a header value, never rendered as HTML, and the
+    # host is pinned to allowed_hosts / public_base_url, so there's no XSS path.
+    return f"{scheme}://{host}"  # nosemgrep

@@ -66,6 +66,11 @@ class CoreSettings(BaseSettings):
     auth_scopes_claim: str = Field(default="permissions", validation_alias="AUTH_SCOPES_CLAIM")
     auth_authorization_server: str = Field(default="", validation_alias="AUTH_AUTHORIZATION_SERVER")
 
+    # Requests/minute granted to a caller authenticated by JWT.  API keys carry
+    # their own per-key limit from the DB record; JWTs don't, and we never read
+    # a limit from the token itself, so this server-side default applies.
+    jwt_default_rate_limit_rpm: int = 120
+
     # stdio-mode local identity (only used when transport == "stdio"; see §11.7).
     # `stdio_scopes` is a comma-separated list of scope patterns, e.g. "gse:*:*".
     stdio_key_id: str = "local"

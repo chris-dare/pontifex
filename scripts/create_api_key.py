@@ -19,6 +19,7 @@ import asyncio
 import os
 import secrets
 import sys
+from datetime import UTC, datetime, timedelta
 
 from mcp_core.auth.api_keys import hash_key
 from mcp_core.models.db import ApiKeyModel
@@ -32,6 +33,7 @@ async def create_key(
     owner_label: str,
     scopes: list[str],
     plaintext: str,
+    expires_at: datetime | None = None,
 ) -> None:
     engine = create_async_engine(database_url)
     async with AsyncSession(engine) as session:
@@ -43,6 +45,7 @@ async def create_key(
             scopes=scopes,
             rate_limit_rpm=120,
             is_active=True,
+            expires_at=expires_at,
         )
         session.add(record)
         await session.commit()
@@ -64,6 +67,12 @@ def main() -> None:
         default=None,
         help="Key ID (default: auto-generated from owner-id)",
     )
+    parser.add_argument(
+        "--expires-in-days",
+        type=int,
+        default=None,
+        help="Expire the key after N days (default: no expiry). Recommended for production keys.",
+    )
     args = parser.parse_args()
 
     database_url = os.environ.get("GSE_MCP_DATABASE_URL")
@@ -74,6 +83,11 @@ def main() -> None:
     plaintext = args.key_plaintext or f"sk_live_{secrets.token_urlsafe(24)}"
     key_id = args.key_id or f"key_{args.owner_id}"
     scopes = [s.strip() for s in args.scopes.split(",")]
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=args.expires_in_days)
+        if args.expires_in_days is not None
+        else None
+    )
 
     asyncio.run(
         create_key(
@@ -83,6 +97,7 @@ def main() -> None:
             owner_label=args.owner_label,
             scopes=scopes,
             plaintext=plaintext,
+            expires_at=expires_at,
         )
     )
 
@@ -90,6 +105,7 @@ def main() -> None:
     print(f"plaintext: {plaintext}")
     print(f"scopes:    {scopes}")
     print(f"owner:     {args.owner_id} ({args.owner_label})")
+    print(f"expires:   {expires_at.isoformat() if expires_at else 'never'}")
 
 
 if __name__ == "__main__":

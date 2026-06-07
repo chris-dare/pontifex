@@ -84,6 +84,51 @@ async def test_validates_well_formed_token(validator, make_token):
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_is_server_default_not_from_token(jwks_doc, signing_key):
+    """The rate limit comes from the server-configured default, never the token
+    — a caller can't raise their own ceiling with a forged claim."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=jwks_doc)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    v = JWTValidator(
+        jwks_url=_JWKS_URL,
+        issuer=_ISSUER,
+        audience=_AUDIENCE,
+        scopes_claim="permissions",
+        default_rate_limit_rpm=42,
+        http_client=client,
+    )
+    now = int(time.time())
+    header = {"alg": "RS256", "kid": "test-key-1"}
+    token = jwt.encode(
+        header,
+        {
+            "iss": _ISSUER,
+            "aud": _AUDIENCE,
+            "sub": "user_x",
+            "exp": now + 600,
+            "rate_limit_rpm": 999999,  # attacker tries to grant themselves more
+        },
+        signing_key,
+    )
+    if isinstance(token, bytes):
+        token = token.decode()
+    identity = await v.validate(token)
+    assert identity.rate_limit_rpm == 42  # server default wins, token claim ignored
+
+
+@pytest.mark.asyncio
+async def test_rejection_message_is_generic(validator, make_token):
+    """Rejections return a single generic message — no validation oracle."""
+    token = make_token({"exp": int(time.time()) - 10})  # expired
+    with pytest.raises(JWTValidationError) as exc:
+        await validator.validate(token)
+    assert str(exc.value) == "Invalid or expired token."
+
+
+@pytest.mark.asyncio
 async def test_extracts_scopes_from_string_claim(validator, make_token):
     token = make_token({"permissions": "gse:live_prices:read gse:stock_price:read"})
     identity = await validator.validate(token)

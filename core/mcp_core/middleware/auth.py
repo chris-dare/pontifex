@@ -12,6 +12,7 @@ from mcp_core.auth.api_keys import APIKeyResolver
 from mcp_core.auth.discovery import external_base_url
 from mcp_core.auth.identity import CallerIdentity
 from mcp_core.auth.jwt_validator import JWTValidationError, JWTValidator
+from mcp_core.middleware.rate_limit import RateLimiter
 
 # Public/unauthenticated paths. Auth middleware skips these.
 _PUBLIC_PATHS: tuple[str, ...] = (
@@ -55,6 +56,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         cache_ttl: int = 300,
         jwt_validator: JWTValidator | None = None,
         api_key_resolver: APIKeyResolver | None = None,
+        rate_limiter: RateLimiter | None = None,
         public_base_url: str = "",
         allowed_hosts: str = "",
     ) -> None:
@@ -65,10 +67,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         up itself.  ``public_base_url`` / ``allowed_hosts`` are passed through to
         :func:`external_base_url` to pin the host advertised in the
         ``WWW-Authenticate`` challenge.
+
+        When the middleware wires up its own Redis client (the ``redis_url``
+        path) it also builds a :class:`RateLimiter` from it unless one is given.
+        In the injected-resolver path a ``rate_limiter`` must be passed
+        explicitly; otherwise rate limiting is off (convenient for tests).
         """
         super().__init__(app)
         self.public_base_url = public_base_url
         self.allowed_hosts = allowed_hosts
+        self.rate_limiter = rate_limiter
         if api_key_resolver is not None:
             self.resolver = api_key_resolver
         else:
@@ -83,6 +91,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             self.resolver = APIKeyResolver(
                 self.redis_client, self.session_factory, cache_ttl=cache_ttl
             )
+            if self.rate_limiter is None:
+                self.rate_limiter = RateLimiter(self.redis_client)
         self.jwt_validator = jwt_validator
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -111,6 +121,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return self._auth_error(request, str(exc))
 
         request.state.caller = identity
+
+        if self.rate_limiter is not None and not await self.rate_limiter.allow(
+            identity.owner_id, identity.rate_limit_rpm
+        ):
+            return _rate_limited(identity.rate_limit_rpm)
+
         return await call_next(request)
 
     def _auth_error(self, request: Request, message: str) -> JSONResponse:
@@ -142,6 +158,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
             },
             headers={"WWW-Authenticate": challenge},
         )
+
+
+def _rate_limited(limit_rpm: int) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error_code": "rate_limited",
+            "message": f"Rate limit of {limit_rpm} requests/minute exceeded.",
+            "status": 429,
+            "retry": True,
+        },
+        headers={"Retry-After": "60"},
+    )
 
 
 def get_caller(request: Request) -> CallerIdentity:

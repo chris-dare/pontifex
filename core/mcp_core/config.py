@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, Field, HttpUrl, TypeAdapter, ValidationError, field_validator
+from pydantic import Field, HttpUrl, TypeAdapter, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _HTTP_URL = TypeAdapter(HttpUrl)
@@ -15,16 +15,14 @@ class CoreSettings(BaseSettings):
     # The DB and Redis connections are shared infrastructure (one server, one
     # database with a schema per domain; one Redis namespaced per domain), not
     # domain settings — so, like `AUTH_*` / `PUBLIC_BASE_URL`, they read from
-    # bare, unprefixed env vars regardless of a domain's `env_prefix`.  The old
-    # `GSE_MCP_*`-prefixed names are accepted as a fallback during the
-    # transition window (drop them once Doppler/Fly are fully migrated).
+    # bare, unprefixed env vars regardless of a domain's `env_prefix`.
     redis_url: str = Field(
         default="redis://localhost:6379/0",
-        validation_alias=AliasChoices("REDIS_URL", "GSE_MCP_REDIS_URL"),
+        validation_alias="REDIS_URL",
     )
     database_url: str = Field(
         default="postgresql+asyncpg://mcp:mcp@localhost:5432/mcp_platform",
-        validation_alias=AliasChoices("DATABASE_URL", "GSE_MCP_DATABASE_URL"),
+        validation_alias="DATABASE_URL",
     )
 
     cb_failure_threshold: int = 3

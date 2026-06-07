@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP
-from mcp_core.audit import AuditWriter
+from pontifex_mcp import AuditWriter
 
 from gse_mcp.data import GSEDataService
 from gse_mcp.tools.company_info import register as register_company_info

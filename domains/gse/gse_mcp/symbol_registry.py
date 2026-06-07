@@ -1,4 +1,4 @@
-from mcp_core.cache.redis_cache import Cache
+from pontifex_mcp import Cache
 
 from gse_mcp.adapters.protocol import GSEDataAdapter
 from gse_mcp.models import Equity

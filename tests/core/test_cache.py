@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from mcp_core.cache.redis_cache import Cache
+from pontifex_mcp.cache.redis_cache import Cache
 
 
 class _FakeRedis:
@@ -32,7 +32,7 @@ class _FakeRedis:
 @pytest.fixture
 def cache(monkeypatch):
     fake = _FakeRedis()
-    monkeypatch.setattr("mcp_core.cache.redis_cache.redis.from_url", lambda _url: fake)
+    monkeypatch.setattr("pontifex_mcp.cache.redis_cache.redis.from_url", lambda _url: fake)
     return Cache("redis://ignored", prefix="gse"), fake
 
 

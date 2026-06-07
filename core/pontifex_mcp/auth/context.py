@@ -10,7 +10,7 @@ Two paths:
 from contextvars import ContextVar
 from typing import Any
 
-from mcp_core.auth.identity import CallerIdentity
+from pontifex_mcp.auth.identity import CallerIdentity
 
 _stdio_caller: ContextVar[CallerIdentity | None] = ContextVar("stdio_caller", default=None)
 

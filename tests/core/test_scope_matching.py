@@ -1,4 +1,4 @@
-from mcp_core.auth.scopes import scopes_match
+from pontifex_mcp.auth.scopes import scopes_match
 
 
 def test_full_wildcard():

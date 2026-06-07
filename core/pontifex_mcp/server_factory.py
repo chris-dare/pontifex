@@ -17,14 +17,14 @@ from fastapi import FastAPI, Request
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from mcp_core.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
-from mcp_core.auth.context import set_stdio_caller
-from mcp_core.auth.discovery import external_base_url
-from mcp_core.auth.identity import CallerIdentity
-from mcp_core.auth.jwt_validator import JWTValidator
-from mcp_core.config import CoreSettings
-from mcp_core.middleware.auth import AuthMiddleware
-from mcp_core.observability.logfire_setup import setup_logfire
+from pontifex_mcp.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
+from pontifex_mcp.auth.context import set_stdio_caller
+from pontifex_mcp.auth.discovery import external_base_url
+from pontifex_mcp.auth.identity import CallerIdentity
+from pontifex_mcp.auth.jwt_validator import JWTValidator
+from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.middleware.auth import AuthMiddleware
+from pontifex_mcp.observability.logfire_setup import setup_logfire
 
 
 def create_mcp_http_app(

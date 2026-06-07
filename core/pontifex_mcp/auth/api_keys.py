@@ -6,8 +6,8 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from mcp_core.auth.identity import CallerIdentity
-from mcp_core.models.db import ApiKeyModel
+from pontifex_mcp.auth.identity import CallerIdentity
+from pontifex_mcp.models.db import ApiKeyModel
 
 
 def hash_key(raw_key: str, algorithm: str = "sha256") -> str:

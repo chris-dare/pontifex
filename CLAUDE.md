@@ -107,7 +107,7 @@ Full architecture: see `MCP_PLATFORM_SOLUTION_DESIGN_v2.md`
 mcp-platform/
 ├── pyproject.toml     # Virtual workspace root (uv workspace)
 ├── uv.lock            # Single lockfile, committed
-├── core/mcp_core/     # Shared library — auth, cache, audit, circuit breaker
+├── core/pontifex_mcp/     # Shared library — auth, cache, audit, circuit breaker
 ├── domains/gse/gse_mcp/  # GSE domain module — tools, adapters, models
 ├── alembic/           # Migrations: alembic/core/ + alembic/domains/gse/
 ├── tests/             # tests/core/ + tests/domains/gse/

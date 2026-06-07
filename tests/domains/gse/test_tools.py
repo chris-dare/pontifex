@@ -9,9 +9,9 @@ from gse_mcp.models import Equity, HistoryEntry, MarketSummary, Stock
 from gse_mcp.tools import register_gse_tools
 from mcp import types
 from mcp.server.fastmcp import FastMCP
-from mcp_core.adapters.manager import DataSourceManager
-from mcp_core.auth.context import set_stdio_caller
-from mcp_core.auth.identity import CallerIdentity
+from pontifex_mcp.adapters.manager import DataSourceManager
+from pontifex_mcp.auth.context import set_stdio_caller
+from pontifex_mcp.auth.identity import CallerIdentity
 
 
 class _FakeAdapter:

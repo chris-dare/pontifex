@@ -1,6 +1,6 @@
 from typing import Protocol, runtime_checkable
 
-from mcp_core.adapters.base import DataAdapter
+from pontifex_mcp import DataAdapter
 
 from gse_mcp.models import Equity, HistoryEntry, MarketSummary, Stock
 

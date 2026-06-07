@@ -7,11 +7,14 @@ Transport selection via `GSE_MCP_TRANSPORT`:
 """
 
 from mcp.server.fastmcp import FastMCP
-from mcp_core.adapters.base import DataAdapter
-from mcp_core.adapters.manager import DataSourceManager
-from mcp_core.audit import AuditWriter
-from mcp_core.cache.redis_cache import Cache
-from mcp_core.server_factory import create_mcp_http_app, run_mcp_stdio
+from pontifex_mcp import (
+    AuditWriter,
+    Cache,
+    DataAdapter,
+    DataSourceManager,
+    create_mcp_http_app,
+    run_mcp_stdio,
+)
 
 from gse_mcp.adapters.gse_official import GSEOfficialAdapter
 from gse_mcp.adapters.internal_db import InternalDBAdapter

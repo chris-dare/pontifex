@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from mcp_core.auth.scopes import scopes_match
+from pontifex_mcp.auth.scopes import scopes_match
 
 
 @dataclass

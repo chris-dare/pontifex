@@ -27,7 +27,7 @@ import structlog
 from authlib.jose import JsonWebKey, JsonWebToken
 from authlib.jose.errors import JoseError
 
-from mcp_core.auth.identity import CallerIdentity
+from pontifex_mcp.auth.identity import CallerIdentity
 
 _log = structlog.get_logger(__name__)
 

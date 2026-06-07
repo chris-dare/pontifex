@@ -29,12 +29,22 @@ def test_missing_urls_fail_fast(monkeypatch):
         GSESettings()
 
 
-def test_prefixed_name_does_not_satisfy_required(monkeypatch):
+def test_prefixed_database_url_does_not_satisfy_required(monkeypatch):
     """Setting only the legacy GSE_MCP_DATABASE_URL must NOT satisfy the required
     bare DATABASE_URL — it's ignored, so construction still fails fast."""
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("REDIS_URL", "redis://bare:6379/0")  # satisfy redis
     monkeypatch.setenv("GSE_MCP_DATABASE_URL", "postgresql+asyncpg://legacy/db")
+    with pytest.raises(ValidationError):
+        GSESettings()
+
+
+def test_prefixed_redis_url_does_not_satisfy_required(monkeypatch):
+    """Symmetric case: only the legacy GSE_MCP_REDIS_URL is set — it's ignored,
+    so the required bare REDIS_URL is still unsatisfied and construction fails."""
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://bare/db")  # satisfy db
+    monkeypatch.setenv("GSE_MCP_REDIS_URL", "redis://legacy:6379/0")
     with pytest.raises(ValidationError):
         GSESettings()
 

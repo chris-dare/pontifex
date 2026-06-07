@@ -1,0 +1,116 @@
+name: Publish to PyPI
+
+# Token-less publishing via PyPI Trusted Publishing (OIDC). No API tokens stored.
+#   - Manual TestPyPI dry-run: Actions -> this workflow -> Run workflow (target=testpypi)
+#   - Real publish: cut a GitHub Release tagged vX.Y.Z (must match core/pyproject.toml version);
+#     the publish-pypi job then waits on the `pypi` environment's required reviewer.
+# Only `pontifex-mcp` is ever published — never the `gse-mcp` demo.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Assert release tag matches pyproject version
+        if: github.event_name == 'release'
+        run: |
+          PYPROJECT_VERSION="$(uv version --package pontifex-mcp --short)"
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "pyproject=$PYPROJECT_VERSION  tag=$TAG"
+          if [ "$PYPROJECT_VERSION" != "$TAG" ]; then
+            echo "::error::Release tag ($GITHUB_REF_NAME) does not match core/pyproject.toml version ($PYPROJECT_VERSION)"
+            exit 1
+          fi
+
+      - name: Build sdist + wheel (pontifex-mcp only)
+        run: uv build --package pontifex-mcp --out-dir dist/
+
+      - name: Guard — no gse-mcp artifact may be published
+        run: |
+          ls -la dist/
+          if ls dist/ | grep -iq 'gse'; then
+            echo "::error::gse-mcp artifact found in dist/ — only pontifex-mcp may be published"
+            exit 1
+          fi
+
+      - name: Check distribution metadata renders
+        run: uvx twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/pontifex-mcp
+    permissions:
+      id-token: write # OIDC token for trusted publishing
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pontifex-mcp
+    permissions:
+      id-token: write # OIDC token for trusted publishing
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        # Defaults to https://upload.pypi.org/legacy/ and emits PEP 740
+        # attestations (signed provenance) automatically under trusted publishing.
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -38,7 +38,7 @@ Repository = "https://github.com/chris-dare/pontifex"
 Issues = "https://github.com/chris-dare/pontifex/issues"
 
 [build-system]
-requires = ["uv_build>=0.7"]
+requires = ["uv_build>=0.7,<0.12"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]

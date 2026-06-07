@@ -1,4 +1,4 @@
-from pydantic import Field, HttpUrl, TypeAdapter, ValidationError, field_validator
+from pydantic import Field, HttpUrl, TypeAdapter, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _HTTP_URL = TypeAdapter(HttpUrl)
@@ -16,14 +16,15 @@ class CoreSettings(BaseSettings):
     # database with a schema per domain; one Redis namespaced per domain), not
     # domain settings — so, like `AUTH_*` / `PUBLIC_BASE_URL`, they read from
     # bare, unprefixed env vars regardless of a domain's `env_prefix`.
-    redis_url: str = Field(
-        default="redis://localhost:6379/0",
-        validation_alias="REDIS_URL",
-    )
-    database_url: str = Field(
-        default="postgresql+asyncpg://mcp:mcp@localhost:5432/mcp_platform",
-        validation_alias="DATABASE_URL",
-    )
+    #
+    # Required in effect: the default is empty and `_require_db_and_redis`
+    # rejects an empty value, so the app fails fast at startup if neither is set
+    # rather than silently falling back to a localhost default — which would
+    # mask, e.g., a deployment that only set the legacy `GSE_MCP_*` name. (An
+    # empty default — rather than no default — keeps no-arg construction valid
+    # for type checkers, since the real values come from the environment.)
+    redis_url: str = Field(default="", validation_alias="REDIS_URL")
+    database_url: str = Field(default="", validation_alias="DATABASE_URL")
 
     cb_failure_threshold: int = 3
     cb_recovery_timeout_seconds: float = 30.0
@@ -98,6 +99,15 @@ class CoreSettings(BaseSettings):
             except ValidationError as exc:
                 raise ValueError(f"public_base_url is not a valid URL: {v!r}") from exc
         return v
+
+    @model_validator(mode="after")
+    def _require_db_and_redis(self) -> "CoreSettings":
+        """Fail fast if the required connection URLs weren't configured."""
+        missing = [name for name in ("database_url", "redis_url") if not getattr(self, name)]
+        if missing:
+            names = ", ".join(name.upper() for name in missing)
+            raise ValueError(f"required environment variable(s) not set: {names}")
+        return self
 
     # `populate_by_name` is left False (the default) on purpose: a field with a
     # `validation_alias` is then populated ONLY from that alias, never from

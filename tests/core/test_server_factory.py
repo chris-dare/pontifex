@@ -5,8 +5,8 @@ but the discovery endpoints touch neither, so they're exercised here with a
 TestClient over a fully-built app.
 """
 
-from mcp_core.config import CoreSettings
-from mcp_core.server_factory import create_mcp_app, create_mcp_http_app
+from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.server_factory import create_mcp_app, create_mcp_http_app
 from starlette.testclient import TestClient
 
 

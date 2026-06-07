@@ -1,6 +1,6 @@
 import time
 
-from mcp_core.utils.circuit_breaker import CircuitBreaker, State
+from pontifex_mcp.utils.circuit_breaker import CircuitBreaker, State
 
 
 def test_starts_closed_and_available():

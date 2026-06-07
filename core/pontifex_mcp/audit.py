@@ -10,7 +10,7 @@ from typing import Protocol
 import structlog
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from mcp_core.models.db import AuditLogModel
+from pontifex_mcp.models.db import AuditLogModel
 
 logger = structlog.get_logger(__name__)
 

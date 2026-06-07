@@ -14,9 +14,9 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from mcp_core.auth.identity import CallerIdentity
-from mcp_core.auth.jwt_validator import JWTValidationError
-from mcp_core.middleware.auth import AuthMiddleware
+from pontifex_mcp.auth.identity import CallerIdentity
+from pontifex_mcp.auth.jwt_validator import JWTValidationError
+from pontifex_mcp.middleware.auth import AuthMiddleware
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse

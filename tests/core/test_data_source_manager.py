@@ -1,5 +1,5 @@
 import pytest
-from mcp_core.adapters.manager import DataSourceManager
+from pontifex_mcp.adapters.manager import DataSourceManager
 
 
 class FakeAdapter:

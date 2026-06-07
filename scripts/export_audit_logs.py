@@ -8,8 +8,8 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from mcp_core.config import CoreSettings
-from mcp_core.models.db import AuditLogModel
+from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.models.db import AuditLogModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 

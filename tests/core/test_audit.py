@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from mcp_core.models.base import AuditRecord
+from pontifex_mcp.models.base import AuditRecord
 
 
 def test_audit_record_serialization():

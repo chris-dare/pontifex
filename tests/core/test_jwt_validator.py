@@ -1,4 +1,4 @@
-"""Tests for :class:`mcp_core.auth.jwt_validator.JWTValidator`.
+"""Tests for :class:`pontifex_mcp.auth.jwt_validator.JWTValidator`.
 
 A self-signed RSA keypair is generated once per module and exposed as both a
 JWKS document (mocked via httpx) and a signer used to mint test JWTs.
@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import pytest
 from authlib.jose import JsonWebKey, jwt
-from mcp_core.auth.jwt_validator import JWTValidationError, JWTValidator
+from pontifex_mcp.auth.jwt_validator import JWTValidationError, JWTValidator
 
 _ISSUER = "https://issuer.example.com/"
 _AUDIENCE = "mcp-platform"

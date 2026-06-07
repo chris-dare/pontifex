@@ -1,5 +1,5 @@
-from mcp_core.adapters.base import DataAdapter
-from mcp_core.utils.circuit_breaker import CircuitBreaker
+from pontifex_mcp.adapters.base import DataAdapter
+from pontifex_mcp.utils.circuit_breaker import CircuitBreaker
 
 
 class DataSourceManager:

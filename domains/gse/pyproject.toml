@@ -3,11 +3,11 @@ name = "gse-mcp"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp-core",
+    "pontifex-mcp",
 ]
 
 [tool.uv.sources]
-mcp-core = { workspace = true }
+pontifex-mcp = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.7"]

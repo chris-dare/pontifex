@@ -21,8 +21,8 @@ import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 
-from mcp_core.auth.api_keys import hash_key
-from mcp_core.models.db import ApiKeyModel
+from pontifex_mcp.auth.api_keys import hash_key
+from pontifex_mcp.models.db import ApiKeyModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 

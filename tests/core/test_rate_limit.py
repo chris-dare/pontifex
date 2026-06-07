@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from mcp_core.middleware.rate_limit import RateLimiter
+from pontifex_mcp.middleware.rate_limit import RateLimiter
 
 
 class _FakeRedis:

@@ -59,7 +59,7 @@ The first domain module is **Ghana Stock Exchange (GSE)** market data.
 │ GSE MCP Server   │ │ Future domain servers                    │
 │ (domain module)  │ │ (same pattern, added as needed)          │
 │                  │ │                                          │
-│ Uses: mcp_core   │ │ Uses: mcp_core                           │
+│ Uses: pontifex_mcp   │ │ Uses: pontifex_mcp                           │
 └────────┬─────────┘ └────────┬─────────────────────────────────┘
          │                    │                    │
          ▼                    ▼                    ▼
@@ -105,9 +105,9 @@ mcp-platform/
 │               ├── 002_create_historical_prices.py
 │               └── 003_create_cached_prices.py
 │
-├── core/                                   # ── Shared library (mcp-core) ──
+├── core/                                   # ── Shared library (pontifex-mcp) ──
 │   ├── pyproject.toml                      # [build-system] uses uv_build
-│   └── mcp_core/
+│   └── pontifex_mcp/
 │       ├── __init__.py
 │       ├── py.typed                        # Type checker marker
 │       ├── server_factory.py               # Creates configured MCP server from parts
@@ -150,7 +150,7 @@ mcp-platform/
 ├── domains/                                # ── Domain modules ──
 │   │
 │   ├── gse/                                # Ghana Stock Exchange
-│   │   ├── pyproject.toml                  # Depends on mcp-core via workspace source
+│   │   ├── pyproject.toml                  # Depends on pontifex-mcp via workspace source
 │   │   └── gse_mcp/
 │   │       ├── __init__.py
 │   │       ├── py.typed
@@ -216,7 +216,7 @@ mcp-platform/
 Every domain inherits from this. Domain-specific settings extend it with their own fields and env prefix.
 
 ```python
-# core/mcp_core/config.py
+# core/pontifex_mcp/config.py
 
 from pydantic_settings import BaseSettings
 
@@ -253,7 +253,7 @@ class CoreSettings(BaseSettings):
 The adapter interface is deliberately minimal. Domains define their own method signatures by extending this protocol. The core only cares about `name`, `priority`, and `health_check` for orchestration.
 
 ```python
-# core/mcp_core/adapters/base.py
+# core/pontifex_mcp/adapters/base.py
 
 from typing import Protocol, runtime_checkable
 
@@ -282,7 +282,7 @@ Domains extend this with their own methods:
 ```python
 # domains/gse/gse_mcp/adapters/protocol.py
 
-from mcp_core.adapters.base import DataAdapter
+from pontifex_mcp.adapters.base import DataAdapter
 from gse_mcp.models import Stock, HistoryEntry, MarketSummary
 
 
@@ -308,10 +308,10 @@ class LogisticsDataAdapter(DataAdapter):
 Generic adapter orchestration. The domain passes in its typed adapters; the manager handles circuit breaking and fallback ordering. Each domain wraps this with typed methods.
 
 ```python
-# core/mcp_core/adapters/manager.py
+# core/pontifex_mcp/adapters/manager.py
 
-from mcp_core.adapters.base import DataAdapter
-from mcp_core.utils.circuit_breaker import CircuitBreaker
+from pontifex_mcp.adapters.base import DataAdapter
+from pontifex_mcp.utils.circuit_breaker import CircuitBreaker
 
 
 class DataSourceManager:
@@ -363,8 +363,8 @@ Each domain builds a typed layer on top:
 ```python
 # domains/gse/gse_mcp/data.py (domain-level manager)
 
-from mcp_core.adapters.manager import DataSourceManager
-from mcp_core.cache.redis_cache import Cache
+from pontifex_mcp.adapters.manager import DataSourceManager
+from pontifex_mcp.cache.redis_cache import Cache
 from gse_mcp.adapters.protocol import GSEDataAdapter
 from gse_mcp.models import Stock
 
@@ -403,7 +403,7 @@ class GSEDataService:
 The cache is prefix-aware and TTL-agnostic — the domain tells it how long to cache each key. Core has no concept of "active hours" or "trading hours." If a domain wants different TTLs at different times, it computes the TTL before calling the cache.
 
 ```python
-# core/mcp_core/cache/redis_cache.py
+# core/pontifex_mcp/cache/redis_cache.py
 
 import json
 import redis.asyncio as redis
@@ -469,13 +469,13 @@ A non-market domain would just pass a flat TTL — no hours logic needed. The co
 The factory wires all the core pieces together so each domain's `main.py` stays small.
 
 ```python
-# core/mcp_core/server_factory.py
+# core/pontifex_mcp/server_factory.py
 
 from fastapi import FastAPI
-from mcp_core.config import CoreSettings
-from mcp_core.middleware.auth import AuthMiddleware
-from mcp_core.middleware.audit import AuditMiddleware
-from mcp_core.observability.logfire_setup import setup_logfire
+from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.middleware.auth import AuthMiddleware
+from pontifex_mcp.middleware.audit import AuditMiddleware
+from pontifex_mcp.observability.logfire_setup import setup_logfire
 
 
 def create_mcp_app(
@@ -533,7 +533,7 @@ Each domain's `config.py` extends `CoreSettings` with domain-specific fields:
 ```python
 # domains/gse/gse_mcp/config.py
 
-from mcp_core.config import CoreSettings
+from pontifex_mcp.config import CoreSettings
 
 
 class GSESettings(CoreSettings):
@@ -552,9 +552,9 @@ Each domain's `main.py` becomes ~30 lines:
 ```python
 # domains/gse/gse_mcp/main.py
 
-from mcp_core.server_factory import create_mcp_app
-from mcp_core.cache.redis_cache import Cache
-from mcp_core.adapters.manager import DataSourceManager
+from pontifex_mcp.server_factory import create_mcp_app
+from pontifex_mcp.cache.redis_cache import Cache
+from pontifex_mcp.adapters.manager import DataSourceManager
 from gse_mcp.config import GSESettings
 from gse_mcp.adapters.kwayisi import KwayisiAdapter
 from gse_mcp.adapters.internal_db import InternalDBAdapter
@@ -945,7 +945,7 @@ The old static `symbol_map.py` dict is no longer needed. See Section 6 for the `
 ## 9. Core Shared Models
 
 ```python
-# core/mcp_core/models/base.py
+# core/pontifex_mcp/models/base.py
 
 from pydantic import BaseModel
 from datetime import datetime
@@ -1080,7 +1080,7 @@ class APIKeyRecord:
 When a credential is resolved, the MCP server works with a `CallerIdentity` — a thin, scope-aware object. No plan tiers, no roles, no tenant hierarchy. Just: who is this, what can they call, and how fast.
 
 ```python
-# core/mcp_core/middleware/auth.py
+# core/pontifex_mcp/middleware/auth.py
 
 from dataclasses import dataclass
 
@@ -1110,7 +1110,7 @@ class CallerIdentity:
 The auth middleware resolves raw API keys to `CallerIdentity` with a Redis-first, Postgres-fallback lookup. No IdP round-trips, no token introspection.
 
 ```python
-# core/mcp_core/middleware/auth.py
+# core/pontifex_mcp/middleware/auth.py
 
 import hashlib
 import json
@@ -1228,7 +1228,7 @@ print(f"Your API key: {raw_key}")
 
 For interactive MCP clients, the platform validates OAuth 2.1 access tokens in JWT form (RFC 9068) minted by an external OIDC provider. The platform is a pure **resource server**: it never mints tokens, runs no login UI, and stores no client records. It validates the JWT and maps its claims to a `CallerIdentity`.
 
-Validation (`core/mcp_core/auth/jwt_validator.py`):
+Validation (`core/pontifex_mcp/auth/jwt_validator.py`):
 
 - Fetch and cache the provider's JWKS (1 h TTL; refetch once on key rotation).
 - Verify the signature using asymmetric algorithms only — `RS*`, `ES*`, `PS*`. The HMAC family and `alg: none` are rejected, so a stolen JWKS document can't be used to forge tokens.
@@ -1242,7 +1242,7 @@ The resulting `CallerIdentity` is identical in shape to the API-key one: `owner_
 A single middleware routes each `Authorization: Bearer <token>` to the right resolver by token shape:
 
 ```python
-# core/mcp_core/middleware/auth.py (excerpt)
+# core/pontifex_mcp/middleware/auth.py (excerpt)
 
 if raw_token.startswith("sk_"):
     identity = await self.api_key_resolver.resolve(raw_token)   # §11.5
@@ -1273,7 +1273,7 @@ So that a client holding no credentials can bootstrap, the server advertises whe
    }
    ```
 
-   `resource` is the MCP server's own canonical URL (RFC 9728 — *not* the authorization-server audience). It's resolved by `core/mcp_core/auth/discovery.py`, which prefers an explicit configured `public_base_url` (the bare `PUBLIC_BASE_URL` env var) and advertises it verbatim. A configured value is the correct design — an OAuth resource identifier is meant to be a single stable value — and it's immune to header spoofing because the request is never consulted. When unset (local/dev), the URL is derived from the request, honouring `X-Forwarded-Host`/`-Proto` but trusting a forwarded host only when it appears in `allowed_hosts`, so a client can't poison the discovery URL with an attacker-controlled host. The client then reads the provider's own OIDC discovery document to find the authorize and token endpoints.
+   `resource` is the MCP server's own canonical URL (RFC 9728 — *not* the authorization-server audience). It's resolved by `core/pontifex_mcp/auth/discovery.py`, which prefers an explicit configured `public_base_url` (the bare `PUBLIC_BASE_URL` env var) and advertises it verbatim. A configured value is the correct design — an OAuth resource identifier is meant to be a single stable value — and it's immune to header spoofing because the request is never consulted. When unset (local/dev), the URL is derived from the request, honouring `X-Forwarded-Host`/`-Proto` but trusting a forwarded host only when it appears in `allowed_hosts`, so a client can't poison the discovery URL with an attacker-controlled host. The client then reads the provider's own OIDC discovery document to find the authorize and token endpoints.
 
 These endpoints are only meaningful when JWT auth is configured; an API-key-only deployment emits a bare `Bearer` challenge with no `resource_metadata`.
 
@@ -1379,7 +1379,7 @@ All tool errors use the MCP protocol's `isError: true` flag on the tool result, 
 **Error body schema:**
 
 ```python
-# core/mcp_core/models/base.py
+# core/pontifex_mcp/models/base.py
 
 class ToolError(BaseModel):
     error_code: str                     # One of the codes above
@@ -1713,7 +1713,7 @@ engine = create_async_engine(
 ### 15.1 Circuit Breaker
 
 ```python
-# core/mcp_core/utils/circuit_breaker.py
+# core/pontifex_mcp/utils/circuit_breaker.py
 
 import time
 from enum import Enum
@@ -1759,7 +1759,7 @@ class CircuitBreaker:
 
 ### 15.2 Retry Policy
 
-Individual HTTP requests to external APIs: 3 attempts, base delay 0.5s, max delay 4s, jitter ±200ms. Implemented as an async decorator in `core/mcp_core/utils/retry.py`.
+Individual HTTP requests to external APIs: 3 attempts, base delay 0.5s, max delay 4s, jitter ±200ms. Implemented as an async decorator in `core/pontifex_mcp/utils/retry.py`.
 
 ---
 
@@ -2010,7 +2010,7 @@ dev-dependencies = [
 # core/pyproject.toml
 
 [project]
-name = "mcp-core"
+name = "pontifex-mcp"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -2044,11 +2044,11 @@ name = "gse-mcp"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp-core",
+    "pontifex-mcp",
 ]
 
 [tool.uv.sources]
-mcp-core = { workspace = true }
+pontifex-mcp = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.7"]
@@ -2066,11 +2066,11 @@ To add a new domain, follow these steps:
 
 1. **Create the directory:** `domains/{name}/{name}_mcp/`
 
-2. **Create `pyproject.toml`** with `[build-system]` using `uv_build`, dependency on `mcp-core` via `[tool.uv.sources]`, and `requires-python = ">=3.12"`. The workspace root auto-discovers it via the `domains/*` glob.
+2. **Create `pyproject.toml`** with `[build-system]` using `uv_build`, dependency on `pontifex-mcp` via `[tool.uv.sources]`, and `requires-python = ">=3.12"`. The workspace root auto-discovers it via the `domains/*` glob.
 
 3. **Define domain models** in `models.py`. These are the Pydantic objects your tools return.
 
-4. **Define the adapter protocol** in `adapters/protocol.py`. Extend `mcp_core.adapters.base.DataAdapter` with your domain-specific methods.
+4. **Define the adapter protocol** in `adapters/protocol.py`. Extend `pontifex_mcp.adapters.base.DataAdapter` with your domain-specific methods.
 
 5. **Implement adapters.** One per external data source. Each returns your domain models.
 

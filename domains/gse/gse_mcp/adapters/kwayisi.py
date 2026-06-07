@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from mcp_core.utils.retry import async_retry
+from pontifex_mcp import async_retry
 
 from gse_mcp.models import (
     CompanyProfile,

@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
-from mcp_core.adapters.manager import DataSourceManager
-from mcp_core.cache.redis_cache import Cache
+from pontifex_mcp import Cache, DataSourceManager
 
 from gse_mcp.adapters.protocol import GSEDataAdapter
 from gse_mcp.models import Equity, HistoryEntry, MarketSummary, Stock

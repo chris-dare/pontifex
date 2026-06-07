@@ -1,7 +1,7 @@
 """Shared helpers for GSE MCP tools.
 
 Tools are FastMCP `@mcp.tool()` registrations wrapped with `tool_runtime` from
-mcp_core. The runtime handles scope check, audit, and error envelope.
+pontifex_mcp. The runtime handles scope check, audit, and error envelope.
 """
 
 from datetime import UTC, datetime

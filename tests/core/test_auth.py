@@ -1,5 +1,5 @@
-from mcp_core.auth.api_keys import hash_key
-from mcp_core.auth.identity import CallerIdentity
+from pontifex_mcp.auth.api_keys import hash_key
+from pontifex_mcp.auth.identity import CallerIdentity
 
 
 def test_hash_key_is_sha256_hex():

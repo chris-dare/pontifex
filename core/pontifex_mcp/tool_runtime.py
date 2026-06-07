@@ -20,9 +20,9 @@ from typing import Any
 
 from mcp import types
 
-from mcp_core.audit import AuditWriter
-from mcp_core.auth.context import resolve_caller
-from mcp_core.models.base import ToolError
+from pontifex_mcp.audit import AuditWriter
+from pontifex_mcp.auth.context import resolve_caller
+from pontifex_mcp.models.base import ToolError
 
 
 class InvalidInput(Exception):

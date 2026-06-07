@@ -8,11 +8,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-from mcp_core.auth.api_keys import APIKeyResolver
-from mcp_core.auth.discovery import external_base_url
-from mcp_core.auth.identity import CallerIdentity
-from mcp_core.auth.jwt_validator import JWTValidationError, JWTValidator
-from mcp_core.middleware.rate_limit import RateLimiter
+from pontifex_mcp.auth.api_keys import APIKeyResolver
+from pontifex_mcp.auth.discovery import external_base_url
+from pontifex_mcp.auth.identity import CallerIdentity
+from pontifex_mcp.auth.jwt_validator import JWTValidationError, JWTValidator
+from pontifex_mcp.middleware.rate_limit import RateLimiter
 
 # Public/unauthenticated paths. Auth middleware skips these.
 _PUBLIC_PATHS: tuple[str, ...] = (

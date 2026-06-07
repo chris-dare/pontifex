@@ -1,8 +1,7 @@
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
-from mcp_core.audit import AuditWriter
-from mcp_core.tool_runtime import tool_runtime
+from pontifex_mcp import AuditWriter, tool_runtime
 
 from gse_mcp.data import AllSourcesUnavailable, GSEDataService
 from gse_mcp.tools._helpers import DOMAIN, envelope

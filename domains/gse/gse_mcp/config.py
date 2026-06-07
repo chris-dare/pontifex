@@ -1,4 +1,4 @@
-from mcp_core.config import CoreSettings
+from pontifex_mcp import CoreSettings
 from pydantic_settings import SettingsConfigDict
 
 

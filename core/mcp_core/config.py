@@ -99,4 +99,8 @@ class CoreSettings(BaseSettings):
                 raise ValueError(f"public_base_url is not a valid URL: {v!r}") from exc
         return v
 
-    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+    # `populate_by_name` is left False (the default) on purpose: a field with a
+    # `validation_alias` is then populated ONLY from that alias, never from
+    # `env_prefix` + field name.  That's what keeps a stray `GSE_MCP_DATABASE_URL`
+    # from setting `database_url` — only the bare `DATABASE_URL` is honoured.
+    model_config = SettingsConfigDict(extra="ignore")

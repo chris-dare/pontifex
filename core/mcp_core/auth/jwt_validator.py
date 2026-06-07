@@ -23,10 +23,18 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import structlog
 from authlib.jose import JsonWebKey, JsonWebToken
 from authlib.jose.errors import JoseError
 
 from mcp_core.auth.identity import CallerIdentity
+
+_log = structlog.get_logger(__name__)
+
+# Client-facing message for any token rejection.  Specific reasons (bad
+# signature, wrong issuer, expired, …) are logged server-side, not returned,
+# so we don't hand an attacker a validation oracle.
+_INVALID_TOKEN_MSG = "Invalid or expired token."
 
 
 class JWTValidationError(Exception):
@@ -52,6 +60,7 @@ class JWTValidator:
         audience: str,
         scopes_claim: str = "permissions",
         cache_ttl_seconds: int = 3600,
+        default_rate_limit_rpm: int = 120,
         http_client: httpx.AsyncClient | None = None,
         transport: str = "http",
     ) -> None:
@@ -62,6 +71,9 @@ class JWTValidator:
         self.audience = audience
         self.scopes_claim = scopes_claim
         self.cache_ttl = cache_ttl_seconds
+        # Server-side default; the rate limit is NOT read from the token, so a
+        # caller can't raise their own ceiling via a forged claim.
+        self.default_rate_limit_rpm = default_rate_limit_rpm
         self._http = http_client or httpx.AsyncClient(timeout=5.0)
         self._owns_http = http_client is None
         self._cache: _CachedJWKS | None = None
@@ -99,19 +111,22 @@ class JWTValidator:
             try:
                 claims = self._jwt.decode(raw_token, keyset, claims_options=claims_options)
             except (JoseError, ValueError) as exc:
-                raise JWTValidationError(f"Invalid token signature: {exc}") from exc
+                _log.warning("jwt_signature_invalid", error=str(exc))
+                raise JWTValidationError(_INVALID_TOKEN_MSG) from exc
 
         # `validate()` runs the claims_options checks plus standard time
         # validation (exp, nbf, iat).
         try:
             claims.validate(now=int(time.time()), leeway=0)
         except JoseError as exc:
-            raise JWTValidationError(f"Token claim validation failed: {exc}") from exc
+            _log.warning("jwt_claims_invalid", error=str(exc))
+            raise JWTValidationError(_INVALID_TOKEN_MSG) from exc
 
         scopes = _extract_scopes(claims, self.scopes_claim)
         owner_id = str(claims.get("sub") or "")
         if not owner_id:
-            raise JWTValidationError("Token missing required 'sub' claim.")
+            _log.warning("jwt_missing_sub")
+            raise JWTValidationError(_INVALID_TOKEN_MSG)
 
         owner_label = str(
             claims.get("name") or claims.get("email") or claims.get("client_id") or owner_id
@@ -125,7 +140,7 @@ class JWTValidator:
             owner_id=owner_id,
             owner_label=owner_label,
             scopes=scopes,
-            rate_limit_rpm=int(claims.get("rate_limit_rpm") or 120),
+            rate_limit_rpm=self.default_rate_limit_rpm,
             transport=self._transport,
         )
 

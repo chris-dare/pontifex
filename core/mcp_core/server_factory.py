@@ -63,6 +63,7 @@ def create_mcp_http_app(
             issuer=settings.auth_issuer,
             audience=settings.auth_audience,
             scopes_claim=settings.auth_scopes_claim,
+            default_rate_limit_rpm=settings.jwt_default_rate_limit_rpm,
         )
 
     @asynccontextmanager

@@ -28,6 +28,7 @@ def _build_client(
     *,
     api_key_identity: CallerIdentity | None,
     jwt_validator: Any | None,
+    rate_limiter: Any | None = None,
     public_base_url: str = "",
     allowed_hosts: str = "",
 ) -> TestClient:
@@ -45,6 +46,7 @@ def _build_client(
         AuthMiddleware,
         api_key_resolver=resolver,
         jwt_validator=jwt_validator,
+        rate_limiter=rate_limiter,
         public_base_url=public_base_url,
         allowed_hosts=allowed_hosts,
     )
@@ -145,6 +147,33 @@ def test_invalid_api_key_returns_401():
     )
     assert response.status_code == 401
     assert response.json()["error_code"] == "auth_failed"
+
+
+def test_rate_limit_exceeded_returns_429(api_key_caller):
+    """When the limiter denies the request, the middleware returns 429."""
+    limiter = AsyncMock()
+    limiter.allow = AsyncMock(return_value=False)
+    client = _build_client(
+        api_key_identity=api_key_caller, jwt_validator=None, rate_limiter=limiter
+    )
+    response = client.get("/mcp", headers={"Authorization": "Bearer sk_live_abc"})
+    assert response.status_code == 429
+    body = response.json()
+    assert body["error_code"] == "rate_limited"
+    assert response.headers["retry-after"] == "60"
+    # The limiter is keyed by the caller's stable owner_id + its rate limit.
+    limiter.allow.assert_awaited_once_with("usr_apikey", 120)
+
+
+def test_within_rate_limit_passes_through(api_key_caller):
+    limiter = AsyncMock()
+    limiter.allow = AsyncMock(return_value=True)
+    client = _build_client(
+        api_key_identity=api_key_caller, jwt_validator=None, rate_limiter=limiter
+    )
+    response = client.get("/mcp", headers={"Authorization": "Bearer sk_live_abc"})
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == "usr_apikey"
 
 
 def test_401_includes_www_authenticate_with_resource_metadata():

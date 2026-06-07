@@ -11,7 +11,7 @@ Usage:
         --owner-id usr_uat --owner-label "UAT test" --scopes "gse:*:*" \
         --key-plaintext sk_test_uat_fixed
 
-Reads GSE_MCP_DATABASE_URL from the environment.
+Reads DATABASE_URL from the environment.
 """
 
 import argparse
@@ -75,9 +75,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    database_url = os.environ.get("GSE_MCP_DATABASE_URL")
+    database_url = os.environ.get("DATABASE_URL")
     if not database_url:
-        print("ERROR: GSE_MCP_DATABASE_URL environment variable not set", file=sys.stderr)
+        print("ERROR: DATABASE_URL environment variable not set", file=sys.stderr)
         sys.exit(1)
 
     plaintext = args.key_plaintext or f"sk_live_{secrets.token_urlsafe(24)}"

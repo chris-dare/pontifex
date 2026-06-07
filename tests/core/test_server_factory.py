@@ -15,16 +15,20 @@ def test_import_only():
 
 
 def _settings(*, public_base_url: str = "", allowed_hosts: str = "mcp.example.com") -> CoreSettings:
-    return CoreSettings(
-        redis_url="redis://localhost:6379/0",
-        database_url="postgresql+asyncpg://x:x@localhost:5432/x",
-        auth_jwks_url="https://issuer.example/.well-known/jwks.json",
-        auth_issuer="https://issuer.example/",
-        auth_audience="https://api.example",
-        auth_authorization_server="https://issuer.example/",
-        public_base_url=public_base_url,
-        allowed_hosts=allowed_hosts,
-        logfire_token="",
+    # Fields with a validation_alias are populated by their alias (the env-var
+    # name), since the settings classes don't enable populate_by_name.
+    return CoreSettings.model_validate(
+        {
+            "REDIS_URL": "redis://localhost:6379/0",
+            "DATABASE_URL": "postgresql+asyncpg://x:x@localhost:5432/x",
+            "AUTH_JWKS_URL": "https://issuer.example/.well-known/jwks.json",
+            "AUTH_ISSUER": "https://issuer.example/",
+            "AUTH_AUDIENCE": "https://api.example",
+            "AUTH_AUTHORIZATION_SERVER": "https://issuer.example/",
+            "PUBLIC_BASE_URL": public_base_url,
+            "allowed_hosts": allowed_hosts,
+            "logfire_token": "",
+        }
     )
 
 

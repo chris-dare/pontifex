@@ -19,7 +19,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-_env_url = os.environ.get("DATABASE_URL") or os.environ.get("GSE_MCP_DATABASE_URL")
+_env_url = os.environ.get("DATABASE_URL")
 if _env_url:
     config.set_main_option("sqlalchemy.url", _env_url)
 

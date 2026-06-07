@@ -1281,7 +1281,7 @@ These endpoints are only meaningful when JWT auth is configured; an API-key-only
 
 The platform is not tied to any one IdP. A handful of settings point it at any OIDC-compliant provider; switching providers is a config change, not a code change.
 
-Most settings carry the domain's `env_prefix` — `GSESettings` sets `env_prefix="GSE_MCP_"`, so e.g. the database URL is read from `GSE_MCP_DATABASE_URL`. But the auth/IdP settings and the canonical URL are **infrastructure-level** (which provider backs the deployment, where it's hosted), not domain concerns, so they read from **bare, unprefixed** env vars via `validation_alias`. The var names are therefore the same for any MCP app, regardless of its domain prefix:
+Domain-specific settings carry the domain's `env_prefix` — `GSESettings` sets `env_prefix="GSE_MCP_"`, so e.g. the upstream data-source URL is read from `GSE_MCP_KWAYISI_BASE_URL`. But **infrastructure-level** settings — the auth/IdP config, the canonical URL, and the shared DB/Redis connections (which provider backs the deployment, where it's hosted, what it connects to) — are not domain concerns, so they read from **bare, unprefixed** env vars via `validation_alias` (`DATABASE_URL`, `REDIS_URL`, `AUTH_*`, `PUBLIC_BASE_URL`). The var names are therefore the same for any MCP app, regardless of its domain prefix:
 
 ```
 AUTH_JWKS_URL=https://your-provider.example/.well-known/jwks.json
@@ -1840,8 +1840,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      GSE_MCP_REDIS_URL: redis://redis:6379/0
-      GSE_MCP_DATABASE_URL: postgresql+asyncpg://mcp:mcp@postgres:5432/mcp_platform
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://mcp:mcp@postgres:5432/mcp_platform
       GSE_MCP_LOG_LEVEL: DEBUG
     depends_on: [redis, postgres]
 
@@ -1910,8 +1910,8 @@ fly postgres attach mcp-platform-db --app mcp-gse
 fly redis create --name mcp-platform-cache --region lhr
 
 # Set secrets (not in fly.toml — stored encrypted by Fly)
-fly secrets set GSE_MCP_REDIS_URL="redis://..." --app mcp-gse
-fly secrets set GSE_MCP_DATABASE_URL="postgres://..." --app mcp-gse
+fly secrets set REDIS_URL="redis://..." --app mcp-gse
+fly secrets set DATABASE_URL="postgres://..." --app mcp-gse
 ```
 
 **Deploy:**
@@ -1936,7 +1936,7 @@ For users connecting to the GSE server via Claude Desktop:
       "args": [
         "run", "--rm", "-i",
         "--env", "GSE_MCP_TRANSPORT=stdio",
-        "--env", "GSE_MCP_REDIS_URL=redis://host.docker.internal:6379/0",
+        "--env", "REDIS_URL=redis://host.docker.internal:6379/0",
         "mcp-platform-gse:latest"
       ]
     }

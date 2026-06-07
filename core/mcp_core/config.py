@@ -19,10 +19,9 @@ class CoreSettings(BaseSettings):
     #
     # Required in effect: the default is empty and `_require_db_and_redis`
     # rejects an empty value, so the app fails fast at startup if neither is set
-    # rather than silently falling back to a localhost default — which would
-    # mask, e.g., a deployment that only set the legacy `GSE_MCP_*` name. (An
-    # empty default — rather than no default — keeps no-arg construction valid
-    # for type checkers, since the real values come from the environment.)
+    # rather than silently falling back to a localhost default. (An empty default
+    # — rather than no default — keeps no-arg construction valid for type
+    # checkers, since the real values come from the environment.)
     redis_url: str = Field(default="", validation_alias="REDIS_URL")
     database_url: str = Field(default="", validation_alias="DATABASE_URL")
 
@@ -111,6 +110,6 @@ class CoreSettings(BaseSettings):
 
     # `populate_by_name` is left False (the default) on purpose: a field with a
     # `validation_alias` is then populated ONLY from that alias, never from
-    # `env_prefix` + field name.  That's what keeps a stray `GSE_MCP_DATABASE_URL`
-    # from setting `database_url` — only the bare `DATABASE_URL` is honoured.
+    # `env_prefix` + field name — so the bare `DATABASE_URL` / `REDIS_URL` are the
+    # sole source for those settings even under a domain's prefix.
     model_config = SettingsConfigDict(extra="ignore")

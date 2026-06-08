@@ -1,0 +1,108 @@
+---
+title: "API reference"
+description: "The supported public API — everything exported from the top-level pontifex_mcp package."
+---
+
+Everything below is importable directly from `pontifex_mcp` and is the **supported public surface**.
+Anything reached through a deeper path (`pontifex_mcp.middleware`, `pontifex_mcp.auth`, …) is internal
+and may change without a major-version bump.
+
+```python
+from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAdapter  # etc.
+```
+
+## Server
+
+<ResponseField name="create_mcp_http_app(domain, settings, register_tools, health_check, *, instructions='')" type="FastAPI">
+  Builds the ASGI application: wires auth + rate-limit middleware, the audit writer, OAuth discovery
+  endpoints, and your registered tools. Returns a FastAPI app to serve with any ASGI server.
+</ResponseField>
+
+<ResponseField name="run_mcp_stdio(domain, settings, register_tools, ...)" type="coroutine">
+  Runs the server over the stdio transport, for local MCP clients that launch the server as a subprocess.
+</ResponseField>
+
+## Configuration
+
+<ResponseField name="CoreSettings" type="pydantic-settings BaseSettings">
+  The settings base class. Subclass it to add domain-specific fields; infrastructure settings
+  (`DATABASE_URL`, `REDIS_URL`, the `AUTH_*` group, `PUBLIC_BASE_URL`) are inherited.
+</ResponseField>
+
+## Tools
+
+<ResponseField name="tool_runtime(*, domain, tool_name, resource, action, audit)" type="decorator">
+  Wraps a tool handler: enforces the `domain:resource:action` scope, writes the audit row, and shapes
+  the success/error response envelope.
+</ResponseField>
+
+<ResponseField name="InvalidInput" type="Exception">
+  Raise inside a handler to reject bad arguments with a clean, structured error (rather than a 500).
+</ResponseField>
+
+## Identity & scopes
+
+<ResponseField name="CallerIdentity" type="model">
+  The resolved caller: `owner_id`, `owner_label`, `scopes`, `rate_limit_rpm`, and `transport`. Produced
+  by both the API-key and JWT paths.
+</ResponseField>
+
+<ResponseField name="scopes_match(granted, required)" type="bool">
+  Returns whether a set of granted scopes satisfies a required `domain:resource:action`, honoring
+  wildcards (`*`).
+</ResponseField>
+
+## Data adapters
+
+<ResponseField name="DataAdapter" type="Protocol">
+  The interface every external data source implements. Keeps I/O out of tool handlers and makes sources
+  swappable and testable.
+</ResponseField>
+
+<ResponseField name="DataSourceManager" type="class">
+  Sequences multiple adapters with failover and circuit breaking, so a flaky upstream degrades
+  gracefully instead of failing the tool.
+</ResponseField>
+
+## Reliability
+
+<ResponseField name="Cache" type="class">
+  A namespaced, Redis-backed cache for adapter responses.
+</ResponseField>
+
+<ResponseField name="CircuitBreaker" type="class">
+  Trips after repeated failures to a source and recovers automatically, shielding callers from a down
+  upstream.
+</ResponseField>
+
+<ResponseField name="async_retry(...)" type="decorator">
+  Retries a coroutine with backoff and jitter, for transient upstream errors.
+</ResponseField>
+
+## Audit
+
+<ResponseField name="AuditWriter" type="Protocol">
+  The audit sink interface. Implementations receive an `AuditRecord` per tool call.
+</ResponseField>
+
+<ResponseField name="DbAuditWriter" type="AuditWriter">
+  Persists audit records to Postgres — the production default.
+</ResponseField>
+
+<ResponseField name="NoopAuditWriter" type="AuditWriter">
+  Discards records — useful in tests and local development.
+</ResponseField>
+
+## Models
+
+<ResponseField name="AuditRecord" type="model">
+  One audited call: caller, tool, timing, data source, cache hit.
+</ResponseField>
+
+<ResponseField name="ToolResponse" type="model">
+  The success envelope returned to the client.
+</ResponseField>
+
+<ResponseField name="ToolError" type="model">
+  The structured error envelope — a stable `error_code` and message, never a stack trace.
+</ResponseField>

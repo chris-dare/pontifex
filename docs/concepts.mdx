@@ -1,0 +1,82 @@
+---
+title: "Concepts"
+description: "How authentication, scopes, the tool runtime, adapters, and audit fit together."
+---
+
+Every request flows through the same path. Understanding it is most of understanding `pontifex-mcp`.
+
+```
+request → authenticate → CallerIdentity → rate limit → scope check → tool → audit
+```
+
+## Authentication
+
+Two credential types resolve to **one identity**:
+
+<CardGroup cols={2}>
+  <Card title="API keys" icon="key">
+    Tokens prefixed `sk_…`, for scripts, CI, and machine-to-machine callers. Hashed at rest; looked up
+    by the resolver.
+  </Card>
+  <Card title="OAuth 2.1 JWTs" icon="user-lock">
+    For interactive clients (Claude Desktop, agents). Validated against your OIDC provider's JWKS — any
+    provider works (Auth0, Entra, Clerk, Keycloak).
+  </Card>
+</CardGroup>
+
+Both produce a **`CallerIdentity`** — a stable `owner_id`, the granted `scopes`, and a `rate_limit_rpm`.
+Downstream code never has to know which credential type was used.
+
+<Note>
+  JWT validation is asymmetric-only and rejects `alg: none`. A caller can't raise their own rate limit
+  or scopes with a forged claim — limits come from server configuration, not the token.
+</Note>
+
+## Scopes
+
+Permissions use the format **`domain:resource:action`** (e.g. `orders:order:read`). The scope required
+by a tool is declared on its `tool_runtime` decorator and checked **before the handler runs**.
+
+| Scope | Grants |
+| --- | --- |
+| `orders:order:read` | one tool |
+| `orders:*:read` | read across the whole domain |
+| `orders:*:*` | full access to the domain |
+
+A caller is granted scopes by their API key or their JWT claims — and can never widen them at runtime.
+
+## The tool runtime
+
+`tool_runtime` is the decorator that wraps each handler. Around your code it:
+
+<Steps>
+  <Step title="Checks the scope">
+    Denies with a structured error if the caller lacks `domain:resource:action`.
+  </Step>
+  <Step title="Runs your handler">
+    You return plain data; `InvalidInput` is the one exception you raise for bad arguments.
+  </Step>
+  <Step title="Writes the audit row">
+    Who called, what, when, which data source, cache hit, and latency.
+  </Step>
+  <Step title="Shapes the response">
+    Success or a consistent error envelope — no stack traces leak to the caller.
+  </Step>
+</Steps>
+
+## Data adapters
+
+External calls go through the **`DataAdapter`** protocol rather than being made directly in a tool. A
+**`DataSourceManager`** can sequence multiple adapters with **failover** and **circuit breaking**, so a
+flaky upstream degrades gracefully instead of taking the tool down.
+
+<Tip>
+  Keeping I/O behind adapters is what makes tools testable and resilient — and it's where `Cache`,
+  `async_retry`, and `CircuitBreaker` plug in.
+</Tip>
+
+## Audit
+
+Every tool call produces an **`AuditRecord`**, written by an **`AuditWriter`**. Use `DbAuditWriter` to
+persist to Postgres (the production default) or `NoopAuditWriter` in tests. This is the trail you need
+for compliance and incident response — answering *who touched what, and when*.

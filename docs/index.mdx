@@ -1,0 +1,71 @@
+---
+title: "Introduction"
+description: "Enterprise-grade capabilities for MCP servers, built on the official MCP Python SDK."
+---
+
+`pontifex-mcp` lets you build [Model Context Protocol](https://modelcontextprotocol.io) servers that
+connect AI agents to real systems **without giving up control over who can call what**. You write the
+tools; it handles authentication, per-caller scopes, rate limits, and a full audit trail.
+
+It builds on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) — you
+keep its tools, protocol, and transports, and add the controls a production server needs.
+
+<CardGroup cols={2}>
+  <Card title="Secure by default" icon="lock">
+    OAuth 2.1 JWTs and `sk_…` API keys. Every tool call is authenticated, against any OIDC provider
+    (Auth0, Entra, Clerk, Keycloak).
+  </Card>
+  <Card title="Least-privilege scopes" icon="shield-halved">
+    `domain:resource:action`, checked before every call. Callers can't widen their own access.
+  </Card>
+  <Card title="Auditable" icon="scroll">
+    Every call recorded: who, what, when, data source, cache hit, latency.
+  </Card>
+  <Card title="Resilient" icon="bolt">
+    Per-caller rate limiting, data-source failover, and circuit breaking.
+  </Card>
+</CardGroup>
+
+## Quick look
+
+```python
+from typing import Any
+
+from mcp.server.fastmcp import Context, FastMCP
+from pontifex_mcp import AuditWriter, CoreSettings, create_mcp_http_app, tool_runtime
+
+
+class OrdersSettings(CoreSettings):
+    orders_api_base: str = "https://orders.internal.example.com"
+
+
+def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
+    @mcp.tool(name="orders_get_status", description="Look up the status of an order.")
+    @tool_runtime(domain="orders", tool_name="orders_get_status", resource="order", action="read", audit=audit)
+    async def get_order_status(order_id: str, ctx: Context | None = None) -> dict[str, Any]:
+        return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
+
+
+async def health() -> dict[str, Any]:
+    return {"status": "ok"}
+
+
+app = create_mcp_http_app("orders", OrdersSettings(), register_tools, health)
+```
+
+Auth, the scope check, rate limiting, and the audit row are applied around your handler. It returns
+plain data on success; any error it raises is normalized into a structured `ToolError`.
+
+<Note>
+  `pontifex-mcp` is `0.x` — building in public. The security model is solid; the public API is still
+  settling, so expect occasional breaking changes before `1.0`.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Get started" icon="rocket" href="/getting-started">
+    Install and stand up your first authenticated MCP server.
+  </Card>
+  <Card title="Concepts" icon="diagram-project" href="/concepts">
+    How auth, scopes, the tool runtime, adapters, and audit fit together.
+  </Card>
+</CardGroup>

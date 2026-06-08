@@ -1,38 +1,31 @@
----
-title: "Getting started"
-description: "Install pontifex-mcp and stand up an authenticated MCP server in a few steps."
----
+# Getting started
 
-## Prerequisites
+!!! info "Prerequisites"
 
-<Info>
-  You'll need **Python 3.12+**, a **Postgres** database (API keys + audit log), and **Redis** (rate
-  limiting + cache). For local development, `docker compose` is the quickest way to get both.
-</Info>
+    You'll need **Python 3.12+**, a **Postgres** database (API keys + audit log), and **Redis** (rate
+    limiting + cache). For local development, `docker compose` is the quickest way to get both.
 
 ## Install
 
-<CodeGroup>
+=== "pip"
 
-```bash pip
-pip install pontifex-mcp
-```
+    ```bash
+    pip install pontifex-mcp
+    ```
 
-```bash uv
-uv add pontifex-mcp
-```
+=== "uv"
 
-</CodeGroup>
+    ```bash
+    uv add pontifex-mcp
+    ```
 
 ## Build a server
 
 A domain is three things: a **settings class**, your **tools** (wrapped with `tool_runtime`), and a
 call to **`create_mcp_http_app`**.
 
-<Steps>
-  <Step title="Define your settings">
-    Subclass `CoreSettings` and add anything your domain needs. Infrastructure settings
-    (`DATABASE_URL`, `REDIS_URL`, the `AUTH_*` vars) are inherited.
+1.  **Define your settings.** Subclass `CoreSettings` and add anything your domain needs.
+    Infrastructure settings (`DATABASE_URL`, `REDIS_URL`, the `AUTH_*` vars) are inherited.
 
     ```python
     from pontifex_mcp import CoreSettings
@@ -40,11 +33,9 @@ call to **`create_mcp_http_app`**.
     class OrdersSettings(CoreSettings):
         orders_api_base: str = "https://orders.internal.example.com"
     ```
-  </Step>
 
-  <Step title="Write a tool">
-    Register tools on the MCP server and wrap each handler with `tool_runtime`. The decorator applies
-    the scope check, the audit row, and the structured error envelope.
+2.  **Write a tool.** Register tools on the MCP server and wrap each handler with `tool_runtime` — it
+    applies the scope check and the audit row.
 
     ```python
     from typing import Any
@@ -61,12 +52,11 @@ call to **`create_mcp_http_app`**.
             audit=audit,
         )
         async def get_order_status(order_id: str, ctx: Context | None = None) -> dict[str, Any]:
-            # ... fetch from your internal system (ideally via a DataAdapter) ...
             return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
     ```
-  </Step>
 
-  <Step title="Create the app">
+3.  **Create the app.**
+
     ```python
     from pontifex_mcp import create_mcp_http_app
 
@@ -75,36 +65,22 @@ call to **`create_mcp_http_app`**.
 
     app = create_mcp_http_app("orders", OrdersSettings(), register_tools, health)
     ```
-  </Step>
 
-  <Step title="Run it">
+4.  **Run it.**
+
     ```bash
     DATABASE_URL=postgresql+asyncpg://... REDIS_URL=redis://... \
       uv run uvicorn your_module:app --port 8080
     ```
 
     The MCP endpoint is served at `/mcp`, with health checks at `/health/live` and `/health/ready`.
-  </Step>
-</Steps>
 
 ## Issue an API key
 
 Tools require authentication. For scripts and CI, mint an `sk_…` API key scoped to what the caller may
-do — for interactive clients (Claude Desktop, your own agents), wire an OAuth provider instead (see
-[Deployment](/deployment)).
+do — for interactive clients (Claude Desktop, your own agents), wire an OAuth provider instead.
 
-<Tip>
-  Scopes use `domain:resource:action` and support wildcards — e.g. `orders:order:read` for one tool, or
-  `orders:*:read` for read-only access across the whole domain.
-</Tip>
+!!! tip
 
-## Next steps
-
-<CardGroup cols={2}>
-  <Card title="Concepts" icon="diagram-project" href="/concepts">
-    The mental model behind auth, scopes, adapters, and audit.
-  </Card>
-  <Card title="Deployment" icon="server" href="/deployment">
-    Environment variables, infrastructure, OAuth, and hosting.
-  </Card>
-</CardGroup>
+    Scopes use `domain:resource:action` and support wildcards — e.g. `orders:order:read` for one tool,
+    or `orders:*:read` for read-only access across the whole domain.

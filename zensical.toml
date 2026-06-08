@@ -1,0 +1,87 @@
+[project]
+site_name = "Pontifex MCP"
+site_description = "Enterprise-grade capabilities for MCP servers, built on the official MCP Python SDK."
+site_author = "Chris Dare"
+site_url = "https://chris-dare.github.io/pontifex/"
+copyright = """Part of <a href="https://argonauts.chrisdare.me">Argonauts</a>"""
+
+nav = [
+  { "Introduction" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "Concepts" = "concepts.md" },
+  { "Security" = "security.md" },
+  { "Deployment" = "deployment.md" },
+  { "API reference" = "reference.md" },
+]
+
+extra_css = ["stylesheets/extra.css"]
+
+[project.theme]
+language = "en"
+features = [
+  "navigation.tabs",
+  "navigation.top",
+  "navigation.instant",
+  "navigation.tracking",
+  "content.code.copy",
+  "content.code.annotate",
+  "search.suggest",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/chris-dare/pontifex"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://pypi.org/project/pontifex-mcp/"
+
+[project.markdown_extensions.abbr]
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.toc]
+permalink = true
+[project.markdown_extensions.pymdownx.betterem]
+[project.markdown_extensions.pymdownx.caret]
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.keys]
+[project.markdown_extensions.pymdownx.magiclink]
+[project.markdown_extensions.pymdownx.mark]
+[project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+[project.markdown_extensions.pymdownx.tilde]

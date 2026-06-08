@@ -12,3 +12,8 @@ dist/
 build/
 .coverage
 .prompts/
+.agents/
+.claude/skills/*
+
+# Zensical docs build output
+/site/

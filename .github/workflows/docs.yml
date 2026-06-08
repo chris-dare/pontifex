@@ -1,40 +1,65 @@
 name: Docs
 
-# Validate the Mintlify docs build on any change under docs/. Catches a broken
-# docs.json or MDX before merge — a status check we own, independent of
-# Mintlify's own deploy. (Deploys themselves are handled by Mintlify's GitHub
-# app once the repo is connected; no workflow needed for that.)
+# Build the Zensical docs and publish to GitHub Pages.
+#   - Pull requests touching docs/ : build only (a validation gate we own).
+#   - Push to main                 : build + deploy to GitHub Pages.
 #
-# Pin Node 22 (LTS) so the Mintlify CLI runs on a deterministic, supported toolchain.
-# Actions are SHA-pinned; Dependabot's github-actions ecosystem keeps them current.
+# Zensical is a Python tool (the `docs` dependency group), so the whole thing runs
+# on uv — no Node. Actions are SHA-pinned; Dependabot keeps them current.
+#
+# One-time setup: repo Settings → Pages → Source → "GitHub Actions".
 
 on:
   pull_request:
-    paths: ["docs/**"]
+    paths: ["docs/**", "zensical.toml", ".github/workflows/docs.yml"]
   push:
     branches: [main]
-    paths: ["docs/**"]
+    paths: ["docs/**", "zensical.toml", ".github/workflows/docs.yml"]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  validate:
-    name: Validate docs
+  build:
+    name: Build docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Set up Node LTS
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
-          node-version: "22"
+          enable-cache: true
 
-      - name: Install Mintlify CLI
-        # Pin the major: the CLI releases very frequently and isn't Dependabot-tracked in a run
-        # step, so this guards against a surprise breaking major without rotting to a stale patch.
-        run: npm install -g mint@4
+      - name: Set up Python
+        run: uv python install 3.12
 
-      - name: Validate docs build (strict)
-        working-directory: docs
-        run: mint validate
+      - name: Build site
+        run: uv run --group docs zensical build --clean
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

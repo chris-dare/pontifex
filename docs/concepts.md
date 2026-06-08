@@ -1,36 +1,42 @@
----
-title: "Concepts"
-description: "How authentication, scopes, the tool runtime, adapters, and audit fit together."
----
+# Concepts
 
 Every request flows through the same path. Understanding it is most of understanding `pontifex-mcp`.
 
-```
-request → authenticate → CallerIdentity → rate limit → scope check → tool → audit
+```mermaid
+flowchart TB
+    req["Request"] --> auth["Authenticate<br/>API key or JWT"]
+    auth --> id["CallerIdentity"]
+    id --> rl["Rate limit"]
+    rl --> scope["Scope check"]
+    scope --> tool["Tool handler"]
+    tool --> audit["Audit log"]
 ```
 
 ## Authentication
 
 Two credential types resolve to **one identity**:
 
-<CardGroup cols={2}>
-  <Card title="API keys" icon="key">
+<div class="grid cards" markdown>
+
+-   __API keys__
+
     Tokens prefixed `sk_…`, for scripts, CI, and machine-to-machine callers. Hashed at rest; looked up
     by the resolver.
-  </Card>
-  <Card title="OAuth 2.1 JWTs" icon="user-lock">
+
+-   __OAuth 2.1 JWTs__
+
     For interactive clients (Claude Desktop, agents). Validated against your OIDC provider's JWKS — any
     provider works (Auth0, Entra, Clerk, Keycloak).
-  </Card>
-</CardGroup>
+
+</div>
 
 Both produce a **`CallerIdentity`** — a stable `owner_id`, the granted `scopes`, and a `rate_limit_rpm`.
 Downstream code never has to know which credential type was used.
 
-<Note>
-  JWT validation is asymmetric-only and rejects `alg: none`. A caller can't raise their own rate limit
-  or scopes with a forged claim — limits come from server configuration, not the token.
-</Note>
+!!! note
+
+    JWT validation is asymmetric-only and rejects `alg: none`. A caller can't raise their own rate limit
+    or scopes with a forged claim — limits come from server configuration, not the token.
 
 ## Scopes
 
@@ -49,33 +55,23 @@ A caller is granted scopes by their API key or their JWT claims — and can neve
 
 `tool_runtime` is the decorator that wraps each handler. Around your code it:
 
-<Steps>
-  <Step title="Checks the scope">
-    Denies with a structured error if the caller lacks `domain:resource:action`.
-  </Step>
-  <Step title="Runs your handler">
-    You return plain data; `InvalidInput` is the one exception you raise for bad arguments.
-  </Step>
-  <Step title="Writes the audit row">
-    Who called, what, when, which data source, cache hit, and latency.
-  </Step>
-  <Step title="Normalizes errors">
-    Your return value passes through unchanged on success; a raised error becomes a structured
-    `ToolError` — no stack traces leak to the caller.
-  </Step>
-</Steps>
+1.  **Checks the scope** — denies with a structured error if the caller lacks `domain:resource:action`.
+2.  **Runs your handler** — you return plain data; `InvalidInput` is the one exception you raise for
+    bad arguments.
+3.  **Writes the audit row** — who called, what, when, which data source, cache hit, and latency.
+4.  **Normalizes errors** — your return value passes through unchanged on success; a raised error
+    becomes a structured `ToolError`, with no stack traces leaking to the caller.
 
 ## Data adapters
 
 External calls go through the **`DataAdapter`** protocol rather than being made directly in a tool. A
 **`DataSourceManager`** orders adapters by health and tracks their success/failure, so your tool can
-iterate the available sources and **fail over** when one is down. (`Cache`, `async_retry`, and
-`CircuitBreaker` are the building blocks for the calls themselves.)
+iterate the available sources and **fail over** when one is down.
 
-<Tip>
-  Keeping I/O behind adapters is what makes tools testable and resilient — and it's where `Cache`,
-  `async_retry`, and `CircuitBreaker` plug in.
-</Tip>
+!!! tip
+
+    Keeping I/O behind adapters is what makes tools testable and resilient — and it's where `Cache`,
+    `async_retry`, and `CircuitBreaker` plug in.
 
 ## Audit
 

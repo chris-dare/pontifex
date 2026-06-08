@@ -11,6 +11,9 @@ dev-dependencies = [
     "ty>=0.0.1a1",
 ]
 
+[dependency-groups]
+docs = ["zensical>=0.0.44"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

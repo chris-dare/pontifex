@@ -59,16 +59,18 @@ A caller is granted scopes by their API key or their JWT claims — and can neve
   <Step title="Writes the audit row">
     Who called, what, when, which data source, cache hit, and latency.
   </Step>
-  <Step title="Shapes the response">
-    Success or a consistent error envelope — no stack traces leak to the caller.
+  <Step title="Normalizes errors">
+    Your return value passes through unchanged on success; a raised error becomes a structured
+    `ToolError` — no stack traces leak to the caller.
   </Step>
 </Steps>
 
 ## Data adapters
 
 External calls go through the **`DataAdapter`** protocol rather than being made directly in a tool. A
-**`DataSourceManager`** can sequence multiple adapters with **failover** and **circuit breaking**, so a
-flaky upstream degrades gracefully instead of taking the tool down.
+**`DataSourceManager`** orders adapters by health and tracks their success/failure, so your tool can
+iterate the available sources and **fail over** when one is down. (`Cache`, `async_retry`, and
+`CircuitBreaker` are the building blocks for the calls themselves.)
 
 <Tip>
   Keeping I/O behind adapters is what makes tools testable and resilient — and it's where `Cache`,

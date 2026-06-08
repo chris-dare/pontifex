@@ -18,8 +18,9 @@ from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAd
   endpoints, and your registered tools. Returns a FastAPI app to serve with any ASGI server.
 </ResponseField>
 
-<ResponseField name="run_mcp_stdio(domain, settings, register_tools, ...)" type="coroutine">
-  Runs the server over the stdio transport, for local MCP clients that launch the server as a subprocess.
+<ResponseField name="run_mcp_stdio(domain_name, settings, register_tools, *, instructions='')" type="None">
+  Blocking runner for the stdio transport (local MCP clients that launch the server as a subprocess).
+  It returns `None`, not a coroutine — call it directly, don't `await` it.
 </ResponseField>
 
 ## Configuration
@@ -31,9 +32,11 @@ from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAd
 
 ## Tools
 
-<ResponseField name="tool_runtime(*, domain, tool_name, resource, action, audit)" type="decorator">
-  Wraps a tool handler: enforces the `domain:resource:action` scope, writes the audit row, and shapes
-  the success/error response envelope.
+<ResponseField name="tool_runtime(*, domain, tool_name, resource, action, audit, source_unavailable_exception=None)" type="decorator">
+  Wraps a tool handler: enforces the `domain:resource:action` scope and writes the audit row. A
+  successful handler's return value passes through unchanged; a raised error is normalized into a
+  structured `ToolError`. Pass `source_unavailable_exception` to map a domain's own "all sources down"
+  exception to a clean unavailable response.
 </ResponseField>
 
 <ResponseField name="InvalidInput" type="Exception">
@@ -43,13 +46,13 @@ from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAd
 ## Identity & scopes
 
 <ResponseField name="CallerIdentity" type="model">
-  The resolved caller: `owner_id`, `owner_label`, `scopes`, `rate_limit_rpm`, and `transport`. Produced
-  by both the API-key and JWT paths.
+  The resolved caller: `key_id`, `owner_id`, `owner_label`, `scopes`, `rate_limit_rpm`, and `transport`
+  (`key_id` and `owner_id` both appear in the audit log). Produced by both the API-key and JWT paths.
 </ResponseField>
 
-<ResponseField name="scopes_match(granted, required)" type="bool">
-  Returns whether a set of granted scopes satisfies a required `domain:resource:action`, honoring
-  wildcards (`*`).
+<ResponseField name="scopes_match(scopes, domain, resource, action)" type="bool">
+  Returns whether the caller's `scopes` satisfy a required `domain` / `resource` / `action`, honoring
+  wildcard forms like `domain:*:read`, `domain:resource:*`, and `domain:*:*`.
 </ResponseField>
 
 ## Data adapters
@@ -60,8 +63,9 @@ from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAd
 </ResponseField>
 
 <ResponseField name="DataSourceManager" type="class">
-  Sequences multiple adapters with failover and circuit breaking, so a flaky upstream degrades
-  gracefully instead of failing the tool.
+  Orders adapters by health and records each one's success/failure (`get_available_adapters`,
+  `record_success`, `record_failure`, `health_summary`). It gives your tool the ordering and bookkeeping
+  to iterate sources and fail over — the domain code performs the actual calls.
 </ResponseField>
 
 ## Reliability

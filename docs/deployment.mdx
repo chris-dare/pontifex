@@ -35,8 +35,8 @@ on your `CoreSettings` subclass read with your domain's own `env_prefix`.
 
 <Steps>
   <Step title="Postgres">
-    Provision a Postgres 16 database and run your migrations. Each domain gets its own schema, so
-    domains can't read each other's tables.
+    Provision a Postgres 16 database and run your migrations. The library's API-key and audit tables
+    live in a `core` schema.
   </Step>
   <Step title="Redis">
     Provision Redis 7 for rate-limit counters and the response cache.

@@ -31,7 +31,9 @@ jobs:
           node-version: "22"
 
       - name: Install Mintlify CLI
-        run: npm install -g mint
+        # Pin the major: the CLI releases very frequently and isn't Dependabot-tracked in a run
+        # step, so this guards against a surprise breaking major without rotting to a stale patch.
+        run: npm install -g mint@4
 
       - name: Validate docs build (strict)
         working-directory: docs

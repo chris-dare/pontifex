@@ -46,11 +46,15 @@ def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
         return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
 
 
-app = create_mcp_http_app("orders", OrdersSettings(), register_tools, lambda: {"status": "ok"})
+async def health() -> dict[str, Any]:
+    return {"status": "ok"}
+
+
+app = create_mcp_http_app("orders", OrdersSettings(), register_tools, health)
 ```
 
-Auth, the scope check, rate limiting, the audit row, and the error envelope are all applied around your
-handler — it just returns data.
+Auth, the scope check, rate limiting, and the audit row are applied around your handler. It returns
+plain data on success; any error it raises is normalized into a structured `ToolError`.
 
 <Note>
   `pontifex-mcp` is `0.x` — building in public. The security model is solid; the public API is still

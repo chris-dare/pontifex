@@ -3,6 +3,9 @@
 Enterprise-grade capabilities for MCP servers, built on the official
 [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
+[Get started](getting-started.md){ .md-button .md-button--primary }
+[Security model](security.md){ .md-button }
+
 ## The problem
 
 AI agents are ready to do real work — answer questions from your data, take actions in your systems.
@@ -53,20 +56,20 @@ The capabilities below are live now — the foundation the rest is built on.
 
 <div class="grid cards" markdown>
 
--   __Secure by default__
+-   :material-shield-check:{ .lg .middle } __Secure by default__
 
     OAuth 2.1 JWTs and `sk_…` API keys. Every tool call is authenticated, against any OIDC provider
     (Auth0, Entra, Clerk, Keycloak).
 
--   __Least-privilege scopes__
+-   :material-key-chain:{ .lg .middle } __Least-privilege scopes__
 
     `domain:resource:action`, checked before every call. Callers can't widen their own access.
 
--   __Auditable__
+-   :material-clipboard-text-clock:{ .lg .middle } __Auditable__
 
     Every call recorded: who, what, when, data source, cache hit, latency.
 
--   __Resilient__
+-   :material-lightning-bolt:{ .lg .middle } __Resilient__
 
     Per-caller rate limiting, data-source failover, and circuit breaking.
 

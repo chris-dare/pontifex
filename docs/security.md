@@ -11,8 +11,8 @@ production data.
 - **Least privilege.** A caller can only invoke the tools their scopes allow, and **cannot widen their
   own access** at runtime.
 - **Everything is recorded.** Each call produces an audit row: who, what, when, which data source.
-- **Your data stays yours.** It's self-hosted. There is no Pontifex cloud, no third party in the path —
-  it runs on your infrastructure, against your databases.
+- **Your data stays yours.** It's self-hosted — it runs on your own infrastructure, against your own
+  databases, with no third party in the path.
 
 ## Authentication
 
@@ -49,8 +49,8 @@ events to your own sink as well.
 
 ## Data residency & isolation
 
-- **Self-hosted.** Pontifex MCP is a library you run; there is no managed service in the request path.
-  Your systems' data never transits a third party.
+- **Self-hosted.** Pontifex MCP is a library you run on your own infrastructure — no third party sits in
+  the request path. Your systems' data never transits anything outside your environment.
 - **You hold the secrets.** Database, Redis, and provider credentials are read from environment
   variables — nothing is hardcoded or phoned home.
 - **Standards-based discovery.** OAuth bootstrapping uses RFC 9728 protected-resource metadata and a

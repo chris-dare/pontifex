@@ -6,12 +6,18 @@ site_url = "https://chris-dare.github.io/pontifex/"
 copyright = """Part of <a href="https://argonauts.chrisdare.me">Argonauts</a>"""
 
 nav = [
-  { "Introduction" = "index.md" },
-  { "Getting started" = "getting-started.md" },
-  { "Concepts" = "concepts.md" },
-  { "Security" = "security.md" },
-  { "Deployment" = "deployment.md" },
-  { "API reference" = "reference.md" },
+  { "Get started" = [
+    { "Introduction" = "index.md" },
+    { "Getting started" = "getting-started.md" },
+  ] },
+  { "Understand" = [
+    { "Concepts" = "concepts.md" },
+    { "Security" = "security.md" },
+    { "Deployment" = "deployment.md" },
+  ] },
+  { "Reference" = [
+    { "API reference" = "reference.md" },
+  ] },
 ]
 
 extra_css = ["stylesheets/extra.css"]
@@ -19,7 +25,7 @@ extra_css = ["stylesheets/extra.css"]
 [project.theme]
 language = "en"
 features = [
-  "navigation.tabs",
+  "navigation.sections",
   "navigation.top",
   "navigation.instant",
   "navigation.tracking",
@@ -27,6 +33,7 @@ features = [
   "content.code.annotate",
   "search.suggest",
   "search.highlight",
+  "toc.integrate",
   "toc.follow",
 ]
 

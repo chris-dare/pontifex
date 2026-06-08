@@ -1,18 +1,29 @@
 # pontifex-mcp
 
-**Build enterprise-grade [MCP](https://modelcontextprotocol.io) servers — the cross-cutting concerns handled for you.**
+Enterprise-grade capabilities for MCP servers, built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
-Bring a domain (your tools + the data behind them); `pontifex-mcp` brings the parts every serious MCP server needs:
+`pontifex-mcp` lets you build [MCP](https://modelcontextprotocol.io) servers that connect AI agents to
+real systems without giving up control over who can call what. You write the tools; it handles
+authentication, per-caller scopes, rate limits, and a full audit trail.
 
-- **Auth, two ways** — `sk_…` API keys for scripts/CI **and** OAuth 2.1 JWTs (Auth0, Entra, Clerk, Keycloak — any OIDC provider) for interactive clients like Claude Desktop. Both resolve to one `CallerIdentity`.
-- **Scope enforcement** — `domain:resource:action` permissions checked before every tool call.
-- **Rate limiting** — per-caller, Redis-backed.
-- **Audit logging** — every call recorded (who, what, when, which data source, cache hit, latency).
-- **Resilient data adapters** — a `DataAdapter` protocol with failover + circuit breaking across sources.
-- **Observability** — Logfire/OpenTelemetry wiring.
-- **Discovery** — RFC 9728 protected-resource metadata + `WWW-Authenticate` so MCP clients bootstrap OAuth on their own.
+## Key features
 
-> **Status:** `0.x` — building in public. The public API (everything exported from `pontifex_mcp`) is stabilising; expect occasional breaking changes before `1.0`.
+- **Secure by default** — OAuth 2.1 JWTs *and* `sk_…` API keys; every tool call is authenticated.
+  Any OIDC provider (Auth0, Entra, Clerk, Keycloak).
+- **Least-privilege scopes** — `domain:resource:action`, checked before every call. Callers can't
+  widen their own access.
+- **Auditable** — every call recorded: who, what, when, data source, cache hit, latency.
+- **Standards-based** — RFC 9728 discovery + `WWW-Authenticate`; MCP clients bootstrap auth on their own.
+- **Resilient** — per-caller rate limiting, adapter failover, circuit breaking.
+- **Observable** — Logfire / OpenTelemetry tracing and metrics wired in.
+- **Built on the MCP SDK** — keep its tools, protocol, and transports; add the controls a production
+  server needs.
+
+*Security is deliberate: asymmetric-only JWT validation, generic auth errors, and no token claim can
+escalate a caller — all verifiable in the source.*
+
+> **Status:** `0.x`, building in public. The security model is solid; the public API (everything
+> exported from `pontifex_mcp`) is still settling — expect occasional breaking changes before `1.0`.
 
 ## Install
 
@@ -24,7 +35,8 @@ Requires Python 3.12+, Postgres, and Redis.
 
 ## Build your own domain
 
-A domain is: a settings class, one or more data adapters, and tools wrapped with `tool_runtime`. Everything below comes from the top-level package.
+A domain is: a settings class, one or more data adapters, and tools wrapped with `tool_runtime`.
+Everything below comes from the top-level package.
 
 ```python
 from typing import Any
@@ -38,34 +50,35 @@ from pontifex_mcp import (
 )
 
 
-class WeatherSettings(CoreSettings):
-    weather_api_base: str = "https://api.example-weather.com"
+class OrdersSettings(CoreSettings):
+    orders_api_base: str = "https://orders.internal.example.com"
 
 
 def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
-    @mcp.tool(name="weather_get_forecast", description="Get the forecast for a city.")
+    @mcp.tool(name="orders_get_status", description="Look up the status of an order.")
     @tool_runtime(
-        domain="weather",
-        tool_name="weather_get_forecast",
-        resource="forecast",     # scope checked: weather:forecast:read
+        domain="orders",
+        tool_name="orders_get_status",
+        resource="order",        # scope checked: orders:order:read
         action="read",
         audit=audit,
     )
-    async def get_forecast(city: str, ctx: Context | None = None) -> dict[str, Any]:
-        # ... fetch data (ideally through a DataAdapter) ...
-        return {"source": "example-weather", "cache_hit": False, "city": city, "high_c": 31}
+    async def get_order_status(order_id: str, ctx: Context | None = None) -> dict[str, Any]:
+        # ... fetch from your internal system (ideally through a DataAdapter) ...
+        return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
 
 
 async def health() -> dict[str, Any]:
     return {"status": "ok"}
 
 
-settings = WeatherSettings()
-app = create_mcp_http_app("weather", settings, register_tools, health)
+settings = OrdersSettings()
+app = create_mcp_http_app("orders", settings, register_tools, health)
 # `uv run uvicorn your_module:app` → MCP endpoint at /mcp, health at /health/ready
 ```
 
-Auth, scope checks, rate limiting, the audit row, and the structured error envelope are all applied by `tool_runtime` and the server's middleware — your handler just returns data.
+Auth, scope checks, rate limiting, the audit row, and the structured error envelope are all applied by
+`tool_runtime` and the server's middleware — your handler just returns data.
 
 ### Configuration
 
@@ -79,9 +92,14 @@ PUBLIC_BASE_URL                  # canonical URL advertised in OAuth discovery
 
 Domain-specific settings on your subclass read with your domain's `env_prefix`.
 
-## Example
+## Who it's for
 
-See the **GSE** (Ghana Stock Exchange) reference server in [`domains/gse`](../domains/gse) for a complete, deployed example — multiple tools, multiple data adapters with failover, and a Fly.io deployment.
+Reach for `pontifex-mcp` when you're exposing internal or proprietary systems — an orders API, a
+customer database, an analytics warehouse — to AI agents (Claude Desktop, your own agents, anything
+that speaks MCP), and unauthenticated tool access isn't an option.
+
+If you're shipping a single public tool over non-sensitive data, the MCP SDK on its own is simpler.
+Come here when access control and an audit trail start to matter.
 
 ## License
 

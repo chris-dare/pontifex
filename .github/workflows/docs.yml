@@ -1,0 +1,38 @@
+name: Docs
+
+# Validate the Mintlify docs build on any change under docs/. Catches a broken
+# docs.json or MDX before merge — a status check we own, independent of
+# Mintlify's own deploy. (Deploys themselves are handled by Mintlify's GitHub
+# app once the repo is connected; no workflow needed for that.)
+#
+# Pin Node 22 (LTS) so the Mintlify CLI runs on a deterministic, supported toolchain.
+# Actions are SHA-pinned; Dependabot's github-actions ecosystem keeps them current.
+
+on:
+  pull_request:
+    paths: ["docs/**"]
+  push:
+    branches: [main]
+    paths: ["docs/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Node LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install Mintlify CLI
+        run: npm install -g mint
+
+      - name: Validate docs build (strict)
+        working-directory: docs
+        run: mint validate

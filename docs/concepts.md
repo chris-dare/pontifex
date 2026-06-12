@@ -73,6 +73,13 @@ iterate the available sources and **fail over** when one is down.
     Keeping I/O behind adapters is what makes tools testable and resilient — and it's where `Cache`,
     `async_retry`, and `CircuitBreaker` plug in.
 
+## Connectors
+
+When the system you're exposing already has an **OpenAPI spec**, a [connector](connectors.md)
+generates the tools instead of you writing them — each one still wrapped in `tool_runtime` with a
+derived scope, and still calling through a `DataAdapter`. Same runtime path as above; only the
+authoring changes.
+
 ## Audit
 
 Every tool call produces an **`AuditRecord`**, written by an **`AuditWriter`**. Use `DbAuditWriter` to

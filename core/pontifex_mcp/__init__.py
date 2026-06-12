@@ -17,6 +17,7 @@ from pontifex_mcp.auth.identity import CallerIdentity
 from pontifex_mcp.auth.scopes import scopes_match
 from pontifex_mcp.cache.redis_cache import Cache
 from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.connectors import BearerFromEnv, HeaderFromEnv, register_openapi_tools
 from pontifex_mcp.models.base import AuditRecord, ToolError, ToolResponse
 from pontifex_mcp.server_factory import create_mcp_http_app, run_mcp_stdio
 from pontifex_mcp.tool_runtime import InvalidInput, tool_runtime
@@ -28,6 +29,7 @@ __version__ = "0.1.0"
 __all__ = [
     "AuditRecord",
     "AuditWriter",
+    "BearerFromEnv",
     "Cache",
     "CallerIdentity",
     "CircuitBreaker",
@@ -35,12 +37,14 @@ __all__ = [
     "DataAdapter",
     "DataSourceManager",
     "DbAuditWriter",
+    "HeaderFromEnv",
     "InvalidInput",
     "NoopAuditWriter",
     "ToolError",
     "ToolResponse",
     "async_retry",
     "create_mcp_http_app",
+    "register_openapi_tools",
     "run_mcp_stdio",
     "scopes_match",
     "tool_runtime",

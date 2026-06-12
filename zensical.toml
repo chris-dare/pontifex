@@ -12,6 +12,7 @@ nav = [
   ] },
   { "Understand" = [
     { "Concepts" = "concepts.md" },
+    { "Connectors" = "connectors.md" },
     { "Security" = "security.md" },
     { "Deployment" = "deployment.md" },
   ] },

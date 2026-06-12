@@ -23,6 +23,11 @@ on your `CoreSettings` subclass read with your domain's own `env_prefix`.
 :   The canonical URL advertised in OAuth discovery metadata. Set this in production so the value is
     stable and not derived from request headers.
 
+`PONTIFEX_CONNECTORS_CONFIG`
+:   Path to a [connectors](connectors.md) YAML file. When set, the server generates governed tools
+    from the listed OpenAPI specs at startup — onboarding a system with config alone. Connector health
+    appears in `/health/ready`.
+
 ## Infrastructure
 
 1.  **Postgres** — provision a Postgres 16 database and run your migrations. The library's API-key and

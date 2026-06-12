@@ -36,6 +36,17 @@ from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAd
 `InvalidInput`
 :   Raise inside a handler to reject bad arguments with a clean, structured error (rather than a 500).
 
+## Connectors
+
+`register_openapi_tools(mcp, *, spec, domain, base_url, audit, include, auth=None, allow_mutations=False, names=None, ...)` → `DataSourceManager`
+:   Generates one governed tool per allowlisted operation in an OpenAPI 3.x spec — each wrapped in
+    `tool_runtime` with a scope derived from the operation. Returns the manager wrapping the generated
+    adapter so you can fold it into your health checks. See [Connectors](connectors.md).
+
+`BearerFromEnv(env_var)` / `HeaderFromEnv(header, env_var)`
+:   How the generated adapter authenticates to the downstream API: a bearer token or a static header,
+    with the secret read from the environment per request (presence is checked at startup).
+
 ## Identity & scopes
 
 `CallerIdentity`

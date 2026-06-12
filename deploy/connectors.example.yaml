@@ -1,0 +1,22 @@
+# Example connectors file: onboard a REST API as governed MCP tools with
+# config alone — no domain code. Point PONTIFEX_CONNECTORS_CONFIG at this file
+# (e.g. in fly.toml [env]) and the server registers one tool per included
+# operation at startup, each wrapped in the standard tool runtime (scope
+# check -> audit -> error envelope).
+#
+# Scopes are derived per operation as domain:resource:action — resource from
+# the first static path segment, action from the verb (GET->read,
+# POST/PUT/PATCH->write, DELETE->delete). E.g. "GET /orders/{order_id}" below
+# requires the caller scope orders:orders:read.
+connectors:
+  - domain: orders
+    spec: https://api.internal/openapi.json # URL or file path, JSON or YAML
+    base_url: https://api.internal
+    auth:
+      type: bearer_env # or header_env (add `header: X-API-Key`)
+      env_var: ORDERS_API_TOKEN
+    include: # explicit allowlist — never whole-spec
+      - GET /orders
+      - GET /orders/{order_id}
+    # Mutating verbs are refused unless explicitly enabled:
+    # allow_mutations: true

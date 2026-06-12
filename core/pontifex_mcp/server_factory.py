@@ -17,12 +17,14 @@ from fastapi import FastAPI, Request
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from pontifex_mcp.adapters.manager import DataSourceManager
 from pontifex_mcp.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
 from pontifex_mcp.auth.context import set_stdio_caller
 from pontifex_mcp.auth.discovery import external_base_url
 from pontifex_mcp.auth.identity import CallerIdentity
 from pontifex_mcp.auth.jwt_validator import JWTValidator
 from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.connectors.config import register_connectors_from_config
 from pontifex_mcp.middleware.auth import AuthMiddleware
 from pontifex_mcp.observability.logfire_setup import setup_logfire
 
@@ -55,6 +57,12 @@ def create_mcp_http_app(
         transport_security=transport_security,
     )
     register_tools(mcp_server, audit)
+
+    connector_managers: dict[str, DataSourceManager] = {}
+    if settings.connectors_config:
+        connector_managers = register_connectors_from_config(
+            mcp_server, audit, settings.connectors_config
+        )
 
     jwt_validator: JWTValidator | None = None
     if settings.auth_jwks_url:
@@ -96,7 +104,10 @@ def create_mcp_http_app(
 
     @app.get("/health/ready")
     async def readiness() -> dict[str, Any]:
-        return await health_check()
+        result = await health_check()
+        for connector_domain, manager in connector_managers.items():
+            result[f"connector:{connector_domain}"] = await manager.health_summary()
+        return result
 
     # OAuth 2.0 Protected Resource Metadata (RFC 9728).  MCP clients fetch
     # this to discover the authorization server.  Only meaningful when JWT
@@ -144,7 +155,10 @@ def run_mcp_stdio(
     set_stdio_caller(identity)
 
     mcp_server = FastMCP(name=f"{domain_name}-mcp", instructions=instructions)
-    register_tools(mcp_server, NoopAuditWriter())
+    audit = NoopAuditWriter()
+    register_tools(mcp_server, audit)
+    if settings.connectors_config:
+        register_connectors_from_config(mcp_server, audit, settings.connectors_config)
     asyncio.run(mcp_server.run_stdio_async())
 
 

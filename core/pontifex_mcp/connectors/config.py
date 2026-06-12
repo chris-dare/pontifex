@@ -1,0 +1,90 @@
+"""Declarative connector registration from a YAML config file.
+
+Lets a deployment onboard an API with config alone — no domain code. The file
+shape (see deploy/connectors.example.yaml):
+
+    connectors:
+      - domain: orders
+        spec: https://api.internal/openapi.json
+        base_url: https://api.internal
+        auth:
+          type: bearer_env          # or header_env (with `header:`)
+          env_var: ORDERS_API_TOKEN
+        include:
+          - GET /orders/{id}
+          - GET /orders
+
+The server factory loads this automatically when `PONTIFEX_CONNECTORS_CONFIG`
+points at such a file; each entry runs through `register_openapi_tools`.
+"""
+
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel, model_validator
+
+from pontifex_mcp.adapters.manager import DataSourceManager
+from pontifex_mcp.audit import AuditWriter
+from pontifex_mcp.connectors.auth import BackendAuth, BearerFromEnv, HeaderFromEnv
+from pontifex_mcp.connectors.register import register_openapi_tools
+
+
+class ConnectorAuth(BaseModel):
+    type: Literal["bearer_env", "header_env"]
+    env_var: str
+    header: str = ""
+
+    @model_validator(mode="after")
+    def _require_header_name(self) -> "ConnectorAuth":
+        if self.type == "header_env" and not self.header:
+            raise ValueError("auth type 'header_env' requires a 'header' name")
+        return self
+
+    def build(self) -> BackendAuth:
+        if self.type == "bearer_env":
+            return BearerFromEnv(self.env_var)
+        return HeaderFromEnv(self.header, self.env_var)
+
+
+class ConnectorEntry(BaseModel):
+    domain: str
+    spec: str
+    base_url: str
+    include: list[str]
+    allow_mutations: bool = False
+    timeout_seconds: float = 10.0
+    auth: ConnectorAuth | None = None
+
+
+class ConnectorsConfig(BaseModel):
+    connectors: list[ConnectorEntry]
+
+
+def load_connectors_config(path: str | Path) -> ConnectorsConfig:
+    data = yaml.safe_load(Path(path).read_text())
+    return ConnectorsConfig.model_validate(data)
+
+
+def register_connectors_from_config(
+    mcp: FastMCP,
+    audit: AuditWriter,
+    path: str | Path,
+) -> dict[str, DataSourceManager]:
+    """Register every connector in the config file; returns managers by domain."""
+    config = load_connectors_config(path)
+    managers: dict[str, DataSourceManager] = {}
+    for entry in config.connectors:
+        managers[entry.domain] = register_openapi_tools(
+            mcp,
+            spec=entry.spec,
+            domain=entry.domain,
+            base_url=entry.base_url,
+            audit=audit,
+            include=entry.include,
+            auth=entry.auth.build() if entry.auth else None,
+            allow_mutations=entry.allow_mutations,
+            timeout_seconds=entry.timeout_seconds,
+        )
+    return managers

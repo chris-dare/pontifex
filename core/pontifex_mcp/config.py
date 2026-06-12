@@ -81,6 +81,13 @@ class CoreSettings(BaseSettings):
     # a limit from the token itself, so this server-side default applies.
     jwt_default_rate_limit_rpm: int = 120
 
+    # Path to a connectors YAML file (see pontifex_mcp.connectors.config). When
+    # set, the server factory registers OpenAPI-generated tools from it at
+    # startup — onboarding an API via deployment config alone. Infrastructure-
+    # level (which connectors a deployment exposes), so a bare env var like
+    # `AUTH_*` / `PUBLIC_BASE_URL`.
+    connectors_config: str = Field(default="", validation_alias="PONTIFEX_CONNECTORS_CONFIG")
+
     # stdio-mode local identity (only used when transport == "stdio"; see §11.7).
     # `stdio_scopes` is a comma-separated list of scope patterns, e.g. "gse:*:*".
     stdio_key_id: str = "local"

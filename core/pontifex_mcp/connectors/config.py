@@ -54,6 +54,7 @@ class ConnectorEntry(BaseModel):
     base_url: str
     include: list[str]
     allow_mutations: bool = False
+    names: dict[str, str] = {}
     timeout_seconds: float = 10.0
     auth: ConnectorAuth | None = None
 
@@ -85,6 +86,7 @@ def register_connectors_from_config(
             include=entry.include,
             auth=entry.auth.build() if entry.auth else None,
             allow_mutations=entry.allow_mutations,
+            names=entry.names,
             timeout_seconds=entry.timeout_seconds,
         )
     return managers

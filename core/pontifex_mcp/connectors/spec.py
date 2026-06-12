@@ -174,6 +174,12 @@ def _parse_operation(
     )
 
 
+def normalize_operation_key(entry: str) -> str:
+    """Normalize a 'verb /path' entry to the canonical 'VERB /path' key."""
+    method, _, path = entry.strip().partition(" ")
+    return f"{method.upper()} {path.strip()}"
+
+
 def select_operations(
     operations: list[Operation],
     include: list[str],
@@ -188,9 +194,7 @@ def select_operations(
     by_key = {op.key: op for op in operations}
     selected: list[Operation] = []
     for entry in include:
-        method, _, path = entry.strip().partition(" ")
-        key = f"{method.upper()} {path.strip()}"
-        op = by_key.get(key)
+        op = by_key.get(normalize_operation_key(entry))
         if op is None:
             available = ", ".join(sorted(by_key))
             raise ValueError(f"include entry {entry!r} matches no operation. Spec has: {available}")

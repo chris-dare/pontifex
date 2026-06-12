@@ -25,6 +25,7 @@ from pontifex_mcp.connectors.auth import BackendAuth
 from pontifex_mcp.connectors.spec import (
     Operation,
     load_spec,
+    normalize_operation_key,
     parse_operations,
     select_operations,
 )
@@ -51,6 +52,7 @@ def register_openapi_tools(
     include: list[str],
     auth: BackendAuth | None = None,
     allow_mutations: bool = False,
+    names: dict[str, str] | None = None,
     timeout_seconds: float = 10.0,
     cb_failure_threshold: int = 3,
     cb_recovery_timeout_seconds: float = 30.0,
@@ -60,12 +62,19 @@ def register_openapi_tools(
     `spec` is a URL, a file path, or an already-parsed dict (JSON or YAML).
     `include` is an explicit allowlist of operations as "VERB /path" entries,
     e.g. ["GET /orders/{id}"]; mutating verbs additionally require
-    `allow_mutations=True`. Returns the `DataSourceManager` wrapping the
-    generated adapter so callers can fold it into their health checks.
+    `allow_mutations=True`. `names` optionally overrides the tool name for an
+    included operation (key: "VERB /path", value: name suffix) — useful when
+    the spec's operationIds are machine-generated noise (e.g. FastAPI's
+    defaults). Returns the `DataSourceManager` wrapping the generated adapter
+    so callers can fold it into their health checks.
     """
     operations = select_operations(
         parse_operations(load_spec(spec)), include, allow_mutations=allow_mutations
     )
+    overrides = {normalize_operation_key(k): v for k, v in (names or {}).items()}
+    unknown = set(overrides) - {op.key for op in operations}
+    if unknown:
+        raise ValueError(f"names entries match no included operation: {', '.join(sorted(unknown))}")
     adapter = OpenAPIAdapter(domain=domain, base_url=base_url, auth=auth, timeout=timeout_seconds)
     manager = DataSourceManager(
         [adapter],
@@ -73,7 +82,14 @@ def register_openapi_tools(
         cb_recovery_timeout=cb_recovery_timeout_seconds,
     )
     for operation in operations:
-        _register_operation(mcp, operation, domain=domain, manager=manager, audit=audit)
+        _register_operation(
+            mcp,
+            operation,
+            domain=domain,
+            manager=manager,
+            audit=audit,
+            name_override=overrides.get(operation.key),
+        )
     return manager
 
 
@@ -84,8 +100,9 @@ def _register_operation(
     domain: str,
     manager: DataSourceManager,
     audit: AuditWriter,
+    name_override: str | None = None,
 ) -> None:
-    tool_name = f"{domain}_{_snake(operation.operation_id)}"
+    tool_name = f"{domain}_{_snake(name_override or operation.operation_id)}"
     handler = _build_handler(operation, manager)
     handler.__name__ = tool_name
     description = _description(operation)

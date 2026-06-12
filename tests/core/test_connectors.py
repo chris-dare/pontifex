@@ -180,6 +180,28 @@ def test_load_spec_from_yaml_path(tmp_path):
 # --- generated tools ---------------------------------------------------------
 
 
+async def test_name_override(build_server):
+    # Lowercase verb in the names key also checks normalization.
+    mcp, _ = build_server(["orders:*:*"], names={"get /orders": "fetch_open_orders"})
+    tools = {t.name for t in await mcp.list_tools()}
+    assert "orders_fetch_open_orders" in tools
+    assert "orders_list_orders" not in tools
+
+
+def test_name_override_must_match_included_operation():
+    mcp = FastMCP(name="t", stateless_http=True)
+    with pytest.raises(ValueError, match="names entries match no included operation"):
+        register_openapi_tools(
+            mcp,
+            spec=SAMPLE_SPEC,
+            domain="orders",
+            base_url=BASE_URL,
+            audit=_RecordingAudit(),
+            include=["GET /orders"],
+            names={"GET /orders/{order_id}": "get_order"},
+        )
+
+
 async def test_registers_one_tool_per_included_operation(build_server):
     mcp, _ = build_server(["orders:*:*"])
     tools = {t.name: t for t in await mcp.list_tools()}

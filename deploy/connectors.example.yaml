@@ -20,3 +20,7 @@ connectors:
       - GET /orders/{order_id}
     # Mutating verbs are refused unless explicitly enabled:
     # allow_mutations: true
+    # Tool names default to the spec's operationId; override per operation
+    # when those are machine-generated noise (tool becomes <domain>_<name>):
+    # names:
+    #   GET /orders/{order_id}: get_order

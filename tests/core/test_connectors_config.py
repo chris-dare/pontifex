@@ -38,6 +38,7 @@ def config_path(tmp_path):
                         "spec": str(spec_path),
                         "base_url": "https://api.test",
                         "include": ["GET /orders", "GET /orders/{order_id}"],
+                        "names": {"GET /orders/{order_id}": "get_order_by_id"},
                         "auth": {"type": "bearer_env", "env_var": "ORDERS_API_TOKEN"},
                     }
                 ]
@@ -82,7 +83,7 @@ async def test_register_from_config_end_to_end(config_path, monkeypatch):
     assert set(managers) == {"orders"}
 
     tools = {t.name for t in await mcp.list_tools()}
-    assert tools == {"orders_list_orders", "orders_get_order"}
+    assert tools == {"orders_list_orders", "orders_get_order_by_id"}
 
     set_stdio_caller(
         CallerIdentity(

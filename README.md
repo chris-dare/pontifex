@@ -1,106 +1,63 @@
-# MCP Platform
+# Pontifex MCP
 
-A modular MCP server platform that exposes structured data domains to AI agents. Connect Claude Desktop, Claude API, or any MCP client and query real-time market data, financial instruments, and more — each domain deployed as an independent service.
+Enterprise-grade capabilities for MCP servers, built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
-The first domain is **Ghana Stock Exchange (GSE)**, powered by the [kwayisi API](https://dev.kwayisi.org/apis/gse/).
+This is the home of **[pontifex-mcp](https://pypi.org/project/pontifex-mcp/)** — a Python library for building [MCP](https://modelcontextprotocol.io) servers that connect AI agents to real systems **without giving up control over who can call what**. You write the tools; it handles authentication, per-caller scopes, rate limits, and a full audit trail.
 
-## Quick Start (Consumer)
+## The idea
 
-1. Get an API key from the platform operator
-2. Configure your MCP client:
+AI agents are ready to do real work against your systems. What the MCP SDK gives you is a *server* that exposes tools. What it doesn't give you is the control that makes a server safe to point at production data: *who* is calling, *what* they're allowed to touch, *how often*, and a *record* of what happened.
 
-```json
-{
-  "mcpServers": {
-    "gse": {
-      "url": "https://mcp-gse.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer sk_live_your_key_here"
-      }
-    }
-  }
-}
-```
+`pontifex-mcp` is that control layer. It turns your existing APIs, data stores, and internal services into **governed tools any AI agent can call** — and it runs on your own infrastructure, so your data never leaves your environment.
 
-3. Ask your AI agent about GSE data:
-   - *"What are the current prices on the Ghana Stock Exchange?"*
-   - *"Show me MTN Ghana's stock history for the last 30 days"*
-   - *"Give me today's market summary"*
+- **Secure by default** — OAuth 2.1 JWTs *and* `sk_…` API keys; every tool call is authenticated, against any OIDC provider (Auth0, Entra, Clerk, Keycloak).
+- **Least-privilege scopes** — `domain:resource:action`, checked before every call. Callers can't widen their own access.
+- **Auditable** — every call recorded: who, what, when, data source, cache hit, latency.
+- **Resilient** — per-caller rate limiting, adapter failover, circuit breaking.
+- **Observable** — Logfire / OpenTelemetry tracing and metrics wired in.
+- **Built on the MCP SDK** — keep its tools, protocol, and transports; add the controls a production server needs.
 
-### Available GSE Tools
-
-| Tool | Description | Scope Required |
-|------|-------------|----------------|
-| `gse_get_live_prices` | Real-time prices for all listed stocks | `gse:live_prices:read` |
-| `gse_get_stock_price` | Price and trading data for a specific stock | `gse:stock_price:read` |
-| `gse_get_stock_history` | Historical end-of-day prices | `gse:stock_history:read` |
-| `gse_get_market_summary` | Composite index, volume, gainers/losers | `gse:market_summary:read` |
-| `gse_get_company_info` | Company profile, directors, EPS, DPS, shares | `gse:company_info:read` |
-
-## Quick Start (Developer)
-
-### Prerequisites
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (package manager)
-- Docker (for Redis + Postgres)
-
-### Setup
+## Install
 
 ```bash
-git clone <repo-url> && cd mcp-platform
-
-# Start infrastructure
-docker compose up -d redis postgres
-
-# Install dependencies
-uv sync
-
-# Run migrations
-uv run alembic upgrade head
-
-# Start the GSE server
-uv run uvicorn gse_mcp.main:app --reload --port 8080
+pip install pontifex-mcp     # or: uv add pontifex-mcp
 ```
 
-### Common Commands
+Requires Python 3.12+, Postgres, and Redis. The full quickstart — building your own domain, configuration, the security model — lives in **[core/README.md](core/README.md)** and the [documentation](https://chris-dare.github.io/pontifex/).
+
+## This repository
+
+A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) holding the library and a demo domain:
+
+```
+core/pontifex_mcp/   The pontifex-mcp library — auth, scopes, audit, resilience, observability
+domains/gse/         Ghana Stock Exchange — a worked example domain built on the library
+alembic/             Database migrations (core schema + per-domain schemas)
+tests/               core + domain tests
+deploy/              Dockerfiles, fly.toml
+scripts/             Operational scripts (seed, export audit, health check)
+```
+
+**Core has zero domain knowledge.** A domain is a self-contained folder under `domains/` — a settings class, one or more data adapters, and tools wrapped with `tool_runtime`. Adding one requires no changes to core. The GSE domain is the reference: see **[domains/gse/README.md](domains/gse/README.md)**.
+
+## Develop
 
 ```bash
-uv run pytest                    # Run tests
-uv run ruff check .              # Lint
-uv run ruff format .             # Format
-uv run ty check                  # Type check
-uv run alembic revision --autogenerate -m "description"  # New migration
-fly deploy --app mcp-gse         # Deploy to Fly.io
+git clone https://github.com/chris-dare/pontifex && cd pontifex
+docker compose up -d redis postgres   # infrastructure
+uv sync                               # install the workspace
+uv run alembic upgrade head           # run migrations
+uv run pytest                         # tests
 ```
 
-## Architecture
+Lint with `uv run ruff check .`, format with `uv run ruff format .`, type-check with `uv run ty check`.
 
-```
-core/           Shared library — auth, cache, audit, circuit breaker, observability
-domains/gse/    GSE domain module — tools, adapters, models
-alembic/        DB migrations (core schema + per-domain schemas)
-tests/          Unit, integration, and contract tests
-deploy/         Dockerfiles, fly.toml
-```
+## Documentation
 
-Each domain is a self-contained module that plugs into the shared core. Adding a new domain means adding a folder under `domains/` — core requires zero changes. See the [solution design doc](MCP_PLATFORM_SOLUTION_DESIGN_v2.md) for the full architecture.
-
-### Key Design Decisions
-
-- **Adapter pattern** with circuit breaker and fallback chain for resilient data sourcing
-- **Scope-based permissions** using `domain:resource:action` (e.g. `gse:live_prices:read`)
-- **Schema isolation** — each domain gets its own Postgres schema
-- **API key auth** — the platform enforces scopes but doesn't manage users or billing
-
-## Adding a New Domain
-
-See [Section 20](MCP_PLATFORM_SOLUTION_DESIGN_v2.md#20-adding-a-new-domain-module) of the solution design doc.
-
-## Deployment
-
-Production runs on [Fly.io](https://fly.io). Each domain is a separate Fly app sharing managed Postgres and Redis. See [Section 17](MCP_PLATFORM_SOLUTION_DESIGN_v2.md#17-deployment) for details.
+- **Docs site** — [https://chris-dare.github.io/pontifex/](https://chris-dare.github.io/pontifex/)
+- **Package README** — [core/README.md](core/README.md) (also rendered on [PyPI](https://pypi.org/project/pontifex-mcp/))
+- **Demo domain** — [domains/gse/README.md](domains/gse/README.md)
 
 ## License
 
-TBD
+MIT © Chris Dare. Part of [Argonauts](https://argonauts.chrisdare.me).

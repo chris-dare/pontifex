@@ -73,6 +73,11 @@ The capabilities below are live now — the foundation the rest is built on.
 
     Per-caller rate limiting, data-source failover, and circuit breaking.
 
+-   :material-power-plug:{ .lg .middle } __Drop-in connectors__
+
+    Point a config file at an OpenAPI spec and every allowlisted operation becomes a governed tool —
+    no code. [Connectors →](connectors.md)
+
 </div>
 
 ## Who it's for

@@ -1,6 +1,6 @@
 [project]
 name = "pontifex-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "The security, access-control, and governance layer for MCP servers."
 readme = "README.md"
 requires-python = ">=3.12"

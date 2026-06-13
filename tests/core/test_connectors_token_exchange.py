@@ -124,6 +124,9 @@ async def test_jwt_caller_exchanges_and_calls_downstream(monkeypatch):
     result = await mcp.call_tool("orders_list_orders", {})
     body = _payload(result)
     assert body["data"] == [{"id": 1}]
+    # The envelope surfaces the delegation audience to the client (intentional —
+    # an audience identifier, not a secret; mirrors source/cache_hit).
+    assert body["delegated_audience"] == BASE_URL
     assert idp.call_count == 1
     # Downstream received the *delegated* token, not the inbound user JWT.
     assert api.calls.last.request.headers["Authorization"] == "Bearer xchg-tok-123"

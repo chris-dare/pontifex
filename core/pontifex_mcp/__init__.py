@@ -29,7 +29,7 @@ from pontifex_mcp.tool_runtime import InvalidInput, tool_runtime
 from pontifex_mcp.utils.circuit_breaker import CircuitBreaker
 from pontifex_mcp.utils.retry import async_retry
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "AuditRecord",

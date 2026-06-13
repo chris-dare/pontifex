@@ -90,7 +90,15 @@ doesn't match an included operation refuses to boot, same as an `include` typo.
 ## Authenticating downstream
 
 The connector authenticates to the *backend* independently of how MCP callers authenticate to
-Pontifex:
+Pontifex. The first question is **does the backend need to know *which* user is calling?**
+
+- **No — it just needs to trust Pontifex.** Use a *service credential*: one identity for every caller.
+  Per-user authorization still happens at Pontifex's scope layer, and the audit log records who made
+  each call. This is the right default for most internal APIs.
+- **Yes — it enforces its own per-user permissions.** Use *token exchange*: Pontifex swaps the caller's
+  token for a downstream one minted for that user.
+
+### Service credential
 
 `bearer_env`
 :   Sends `Authorization: Bearer <token>` with the token read from the named environment variable.
@@ -100,6 +108,39 @@ Pontifex:
 
 A missing variable fails at startup; the value is re-read on every request, so rotating the secret
 doesn't require a restart.
+
+### User identity (OAuth token exchange)
+
+`token_exchange`
+:   For a backend that shares your OAuth provider and enforces per-user authorization. Pontifex takes
+    the caller's inbound token and exchanges it at the IdP ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693))
+    for a *new* token carrying the backend's audience, on behalf of the user. The downstream then
+    applies that user's own permissions.
+
+```yaml
+    auth:
+      type: token_exchange
+      token_endpoint: https://idp.example.com/oauth/token
+      audience: https://api.internal              # the downstream's audience
+      client_id_env: PONTIFEX_OAUTH_CLIENT_ID     # Pontifex's own IdP client,
+      client_secret_env: PONTIFEX_OAUTH_CLIENT_SECRET  # presence checked at boot
+```
+
+The caller's token is **never forwarded as-is** (no passthrough — a token minted for Pontifex's
+audience wouldn't be accepted downstream, and forwarding it would break the trust chain). Exchanged
+tokens are cached in process memory only, keyed per user and audience, for their lifetime.
+
+A connector is *either* service-auth *or* user-auth — never both. **API-key callers can't use a
+`token_exchange` connector** (they carry no token to exchange) and are rejected with a clear
+`invalid_input`. If a backend genuinely needs both modes, define two connector entries with distinct
+domains.
+
+!!! note "Token-exchange caveats (v1)"
+
+    The exchanged-token cache is in-process only (not shared across workers; an encrypted shared
+    backend is a future option). Audience is verified on inspectable (JWT) exchanged tokens; opaque
+    tokens are trusted. The IdP is on the call path — its failures surface as `source_unavailable`
+    and are circuit-broken, while a refused exchange surfaces as `invalid_input`.
 
 ## Resilience and errors
 

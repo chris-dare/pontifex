@@ -53,6 +53,15 @@ class OpenAPIAdapter:
         """
         return getattr(self._auth, "requires_subject_token", False)
 
+    @property
+    def delegated_audience(self) -> str | None:
+        """The downstream audience the caller's credential is delegated to, when
+        this connector uses per-user token exchange; None for service-credential
+        connectors. Surfaced for the audit trail — never the token itself."""
+        if self.requires_subject_token:
+            return getattr(self._auth, "audience", None)
+        return None
+
     async def close(self) -> None:
         await self._client.aclose()
         # Cascade to the auth strategy if it owns resources (e.g. TokenExchange's

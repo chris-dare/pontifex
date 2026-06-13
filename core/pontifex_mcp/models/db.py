@@ -47,6 +47,10 @@ class AuditLogModel(Base):
     response_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(INET, nullable=True)
+    # When the call reached its backend via per-user OAuth token exchange, the
+    # downstream audience the user's credential was delegated to (never the
+    # token itself). Null for hand-written and service-credential tools.
+    delegated_audience: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class DomainRegistryModel(Base):

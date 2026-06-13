@@ -96,6 +96,22 @@ def tool_body(result) -> dict:
     return json.loads(result.content[0].text)
 
 
+async def latest_audit_delegation(tool_name: str) -> str | None:
+    """Read delegated_audience from the most recent audit row for a tool —
+    proves the delegation is queryable in the real audit table, not just logged."""
+    import asyncpg
+
+    conn = await asyncpg.connect(os.environ["PG_DSN"])
+    try:
+        return await conn.fetchval(
+            "select delegated_audience from core.audit_log "
+            "where tool_name = $1 order by id desc limit 1",
+            tool_name,
+        )
+    finally:
+        await conn.close()
+
+
 async def main() -> None:
     if not wait_for_keycloak():
         check("keycloak reachable via ROPC", False, "timed out after 120s")
@@ -133,6 +149,14 @@ async def main() -> None:
         and b.get("data", {}).get("invoices", [{}])[0].get("id") == "INV-9"
     )
     check("bob: distinct user → bob's invoice (per-user delegation)", ok, json.dumps(b)[:300])
+
+    # The delegation is recorded in the real audit table (#45), audience only.
+    audience = await latest_audit_delegation("billing_list_invoices")
+    check(
+        "audit row records the delegation (billing-api)",
+        audience == "billing-api",
+        f"delegated_audience={audience!r}",
+    )
 
     # No credential to Pontifex → AuthMiddleware rejects before MCP.
     status = pontifex_no_auth_status()

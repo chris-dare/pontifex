@@ -35,6 +35,7 @@ class AuditRecord(BaseModel):
     response_ms: int
     error: str | None = None
     ip_address: str | None = None
+    delegated_audience: str | None = None
 
 
 class ToolError(BaseModel):

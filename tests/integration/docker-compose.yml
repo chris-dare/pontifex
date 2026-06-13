@@ -117,6 +117,7 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       PONTIFEX_URL: http://pontifex:8080
       DOWNSTREAM_URL: http://downstream:8000
+      PG_DSN: postgresql://pontifex:pontifex@postgres:5432/pontifex
     depends_on:
       pontifex:
         condition: service_healthy

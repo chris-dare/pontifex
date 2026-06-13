@@ -31,6 +31,7 @@ class AuditWriter(Protocol):
         response_ms: int,
         error: str | None,
         ip_address: str | None,
+        delegated_audience: str | None = None,
     ) -> None: ...
 
 
@@ -56,6 +57,7 @@ class DbAuditWriter:
         response_ms: int,
         error: str | None,
         ip_address: str | None,
+        delegated_audience: str | None = None,
     ) -> None:
         try:
             async with self.session_factory() as session:
@@ -74,6 +76,7 @@ class DbAuditWriter:
                         response_ms=response_ms,
                         error=error,
                         ip_address=ip_address,
+                        delegated_audience=delegated_audience,
                     )
                 )
                 await session.commit()

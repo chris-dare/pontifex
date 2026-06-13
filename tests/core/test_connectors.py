@@ -71,6 +71,7 @@ AUDIT_FIELDS = {
     "response_ms",
     "error",
     "ip_address",
+    "delegated_audience",
 }
 
 
@@ -230,6 +231,8 @@ async def test_call_success_and_audit_shape(build_server):
     assert row["tool_params"] == {"status": "open", "limit": None}
     assert row["data_source"] == "openapi:orders"
     assert row["error"] is None
+    # Service-credential connector: no delegation recorded.
+    assert row["delegated_audience"] is None
 
 
 @respx.mock

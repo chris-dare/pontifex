@@ -158,13 +158,18 @@ def _build_handler(operation: Operation, manager: DataSourceManager):
                 failures.append(f"{adapter.name}: {exc!r}")
                 continue
             manager.record_success(adapter.name)
-            return {
+            envelope = {
                 "timestamp": datetime.now(UTC).isoformat(),
                 "source": adapter.name,
                 "cache_hit": False,
                 "status_code": status_code,
                 "data": data,
             }
+            # Record the delegation (for the audit trail) when the call reached
+            # the backend via per-user token exchange.
+            if adapter.delegated_audience is not None:
+                envelope["delegated_audience"] = adapter.delegated_audience
+            return envelope
         raise ConnectorUnavailable("; ".join(failures) or "circuit breaker open")
 
     return handler

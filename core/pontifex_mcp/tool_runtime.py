@@ -140,6 +140,7 @@ def tool_runtime(
             caller = resolve_caller(ctx)
             data_source = "unknown"
             cache_hit = False
+            delegated_audience: str | None = None
             error: str | None = None
 
             try:
@@ -155,6 +156,8 @@ def tool_runtime(
                 if isinstance(result, dict):
                     data_source = str(result.get("source", "unknown"))
                     cache_hit = bool(result.get("cache_hit", False))
+                    audience = result.get("delegated_audience")
+                    delegated_audience = str(audience) if audience else None
                 return result
             except InvalidInput as exc:
                 error = repr(exc)
@@ -186,6 +189,7 @@ def tool_runtime(
                     response_ms=elapsed_ms,
                     error=error,
                     ip_address=_ip_address(ctx),
+                    delegated_audience=delegated_audience,
                 )
 
         return wrapper

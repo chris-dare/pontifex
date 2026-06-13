@@ -36,7 +36,13 @@ def _build_client(
 
     async def echo(request: Request) -> JSONResponse:
         caller: CallerIdentity = request.state.caller
-        return JSONResponse({"owner_id": caller.owner_id, "scopes": caller.scopes})
+        return JSONResponse(
+            {
+                "owner_id": caller.owner_id,
+                "scopes": caller.scopes,
+                "subject_token": getattr(request.state, "subject_token", "__unset__"),
+            }
+        )
 
     resolver = AsyncMock()
     resolver.resolve = AsyncMock(return_value=api_key_identity)
@@ -104,6 +110,34 @@ def test_non_prefixed_token_routes_to_jwt_validator(jwt_caller):
     assert response.status_code == 200
     assert response.json()["owner_id"] == "usr_jwt"
     jwt_validator.validate.assert_awaited_once_with("eyJhbGciOi.payload.sig")
+
+
+def test_jwt_caller_captures_subject_token(jwt_caller):
+    """The inbound JWT is captured at request.state.subject_token for downstream
+    token exchange — it's the raw token, verbatim."""
+    jwt_validator = AsyncMock()
+    jwt_validator.validate = AsyncMock(return_value=jwt_caller)
+    client = _build_client(api_key_identity=None, jwt_validator=jwt_validator)
+    response = client.get("/mcp", headers={"Authorization": "Bearer eyJhbGciOi.payload.sig"})
+    assert response.status_code == 200
+    assert response.json()["subject_token"] == "eyJhbGciOi.payload.sig"
+
+
+def test_api_key_caller_has_no_subject_token(api_key_caller):
+    """API-key callers carry no JWT to exchange — subject_token is None (set, not
+    merely absent), so a token-exchange connector can detect ineligibility."""
+    client = _build_client(api_key_identity=api_key_caller, jwt_validator=None)
+    response = client.get("/mcp", headers={"Authorization": "Bearer sk_live_abc"})
+    assert response.status_code == 200
+    assert response.json()["subject_token"] is None
+
+
+def test_subject_token_never_serialized_with_identity(jwt_caller):
+    """Invariant: the subject token is not a field on CallerIdentity, so it can't
+    leak into the API-key cache via serialize_identity."""
+    from pontifex_mcp.middleware.auth import serialize_identity
+
+    assert "subject_token" not in serialize_identity(jwt_caller)
 
 
 def test_jwt_validation_failure_returns_auth_failed():

@@ -159,6 +159,8 @@ class TokenExchange:
         audience: str,
         client_id_env: str,
         client_secret_env: str,
+        client_auth: str = "post",
+        default_ttl_seconds: int | None = None,
         cache: TokenCache | None = None,
         http_client: httpx.AsyncClient | None = None,
         breaker: CircuitBreaker | None = None,
@@ -167,10 +169,20 @@ class TokenExchange:
     ) -> None:
         _require_env(client_id_env)
         _require_env(client_secret_env)
+        if client_auth not in ("post", "basic"):
+            raise ValueError("client_auth must be 'post' (client_secret_post) or 'basic'")
         self.token_endpoint = token_endpoint
         self.audience = audience
         self._client_id_env = client_id_env
         self._client_secret_env = client_secret_env
+        # Provider interop knobs (defaults match the strict, common case):
+        #  - client_auth: how to present client creds — in the form ("post",
+        #    client_secret_post) or an HTTP Basic header ("basic").
+        #  - default_ttl_seconds: `expires_in` is OPTIONAL in RFC 8693; the
+        #    default is to fail closed when it's absent (we can't size the cache
+        #    TTL). A provider that omits it can opt into this fallback TTL.
+        self._client_auth = client_auth
+        self._default_ttl = default_ttl_seconds
         self._cache = cache or InMemoryTokenCache()
         self._client = http_client or httpx.AsyncClient(timeout=timeout)
         self._breaker = breaker or CircuitBreaker(
@@ -204,11 +216,18 @@ class TokenExchange:
             "subject_token_type": _ACCESS_TOKEN_TYPE,
             "requested_token_type": _ACCESS_TOKEN_TYPE,
             "audience": self.audience,
-            "client_id": os.environ[self._client_id_env],
-            "client_secret": os.environ[self._client_secret_env],
         }
+        client_id = os.environ[self._client_id_env]
+        client_secret = os.environ[self._client_secret_env]
+        headers: dict[str, str] = {}
+        if self._client_auth == "basic":
+            token = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            headers["Authorization"] = f"Basic {token}"
+        else:  # client_secret_post
+            form["client_id"] = client_id
+            form["client_secret"] = client_secret
         try:
-            response = await self._client.post(self.token_endpoint, data=form)
+            response = await self._client.post(self.token_endpoint, data=form, headers=headers)
         except httpx.HTTPError as exc:
             self._breaker.record_failure()
             _logger.warning("token_exchange_unreachable", audience=self.audience, error=repr(exc))
@@ -235,9 +254,15 @@ class TokenExchange:
             raise TokenExchangeRejected("token endpoint returned non-JSON") from exc
 
         access = payload.get("access_token")
+        if not access:
+            raise TokenExchangeRejected("token response missing access_token")
         expires_in = payload.get("expires_in")
-        if not access or not isinstance(expires_in, int) or expires_in <= 0:
-            raise TokenExchangeRejected("token response missing access_token or expires_in")
+        if not isinstance(expires_in, int) or expires_in <= 0:
+            # `expires_in` is OPTIONAL in RFC 8693. Fail closed unless the caller
+            # configured a fallback TTL for providers that omit it.
+            if self._default_ttl is None:
+                raise TokenExchangeRejected("token response missing expires_in")
+            expires_in = self._default_ttl
         if not self._audience_ok(access):
             raise TokenExchangeRejected("exchanged token audience mismatch")
 

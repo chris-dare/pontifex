@@ -51,6 +51,8 @@ class ConnectorAuth(BaseModel):
     audience: str = ""
     client_id_env: str = ""
     client_secret_env: str = ""
+    client_auth: Literal["post", "basic"] = "post"
+    default_ttl_seconds: int | None = None
 
     @model_validator(mode="after")
     def _validate_per_type(self) -> "ConnectorAuth":
@@ -78,6 +80,8 @@ class ConnectorAuth(BaseModel):
             audience=self.audience,
             client_id_env=self.client_id_env,
             client_secret_env=self.client_secret_env,
+            client_auth=self.client_auth,
+            default_ttl_seconds=self.default_ttl_seconds,
         )
 
 

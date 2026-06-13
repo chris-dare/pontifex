@@ -130,6 +130,24 @@ The caller's token is **never forwarded as-is** (no passthrough — a token mint
 audience wouldn't be accepted downstream, and forwarding it would break the trust chain). Exchanged
 tokens are cached in process memory only, keyed per user and audience, for their lifetime.
 
+The request is plain [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693), so any compliant provider
+works — Keycloak, Auth0, Microsoft Entra (on-behalf-of), Okta. Two things differ per provider:
+
+- **What `audience` means.** It's the downstream's identifier as your provider expects it — a client
+  ID (Keycloak), an API identifier URL (Auth0), a resource/scope (Entra). Set it to whatever your
+  provider puts in the exchanged token's `aud`.
+- **Provider-side authorization.** Each provider gates which clients may exchange for which audiences
+  in its own model (Keycloak client/audience config, Auth0 client-grant settings, Entra API
+  permissions + admin consent). That setup lives in your IdP, not in Pontifex.
+
+Two optional knobs cover provider differences in the protocol itself:
+
+- `client_auth: post` *(default)* sends the client credentials in the form (`client_secret_post`);
+  `client_auth: basic` sends them as an HTTP Basic header for providers that require it.
+- `default_ttl_seconds` — `expires_in` is optional in RFC 8693. By default a response without it is
+  rejected (we can't size the cache TTL); set this to supply a fallback TTL for a provider that omits
+  it.
+
 A connector is *either* service-auth *or* user-auth — never both. **API-key callers can't use a
 `token_exchange` connector** (they carry no token to exchange) and are rejected with a clear
 `invalid_input`. If a backend genuinely needs both modes, define two connector entries with distinct

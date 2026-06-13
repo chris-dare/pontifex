@@ -221,6 +221,62 @@ async def test_missing_expires_in_rejected(monkeypatch):
         await te.headers(AuthContext(subject_token="user-jwt"))
 
 
+@respx.mock
+async def test_missing_expires_in_uses_default_ttl_when_configured(monkeypatch):
+    # A spec-compliant provider may omit expires_in (it's OPTIONAL in RFC 8693);
+    # an opt-in default_ttl lets such a provider work instead of failing closed.
+    route = respx.post(IDP).mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_ID", "c")
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "s")
+    te = TokenExchange(
+        token_endpoint=IDP,
+        audience=AUDIENCE,
+        client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
+        client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+        default_ttl_seconds=120,
+    )
+    h = await te.headers(AuthContext(subject_token="user-jwt"))
+    assert h == {"Authorization": "Bearer tok"}
+    # Cached for the fallback TTL → a second call doesn't re-exchange.
+    await te.headers(AuthContext(subject_token="user-jwt"))
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_client_secret_basic_sends_authorization_header(monkeypatch):
+    route = respx.post(IDP).mock(
+        return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 300})
+    )
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_ID", "my-client")
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "my-secret")
+    te = TokenExchange(
+        token_endpoint=IDP,
+        audience=AUDIENCE,
+        client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
+        client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+        client_auth="basic",
+    )
+    await te.headers(AuthContext(subject_token="user-jwt"))
+    req = route.calls.last.request
+    expected = "Basic " + base64.b64encode(b"my-client:my-secret").decode()
+    assert req.headers["Authorization"] == expected
+    # Creds go in the header, not the body.
+    assert "client_secret" not in req.content.decode()
+
+
+def test_invalid_client_auth_rejected(monkeypatch):
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_ID", "c")
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "s")
+    with pytest.raises(ValueError, match="client_auth"):
+        TokenExchange(
+            token_endpoint=IDP,
+            audience=AUDIENCE,
+            client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
+            client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+            client_auth="mtls",
+        )
+
+
 # --- cache LRU bound ---------------------------------------------------------
 
 

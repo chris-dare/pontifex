@@ -24,10 +24,12 @@ import os
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
+import redis.asyncio as redis_asyncio
 import structlog
+from cryptography.fernet import Fernet
 
 from pontifex_mcp.connectors.adapter import UpstreamAuthUnavailable
 from pontifex_mcp.connectors.auth import AuthContext, _require_env
@@ -144,6 +146,118 @@ class InMemoryTokenCache:
             self._entries.popitem(last=False)
 
 
+class TokenEncryptor(Protocol):
+    """Encrypts/decrypts token bytes for a cache backend that stores at rest."""
+
+    def encrypt(self, plaintext: bytes) -> bytes: ...
+    def decrypt(self, ciphertext: bytes) -> bytes: ...
+
+
+class FernetEncryptor:
+    """AES-CBC + HMAC via Fernet, with the key held outside the datastore.
+
+    For the shared (Redis) cache this is a real control: a Redis dump alone can't
+    reveal tokens because the key lives in the environment, not in Redis. (For the
+    in-memory cache it would be theatre — the key is co-resident — so it isn't
+    used there.)
+    """
+
+    def __init__(self, key: str) -> None:
+        try:
+            self._fernet = Fernet(key.encode())
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                "PONTIFEX_TOKEN_CACHE_KEY must be a urlsafe-base64 32-byte Fernet key "
+                "(generate one with cryptography.fernet.Fernet.generate_key())"
+            ) from exc
+
+    def encrypt(self, plaintext: bytes) -> bytes:
+        return self._fernet.encrypt(plaintext)
+
+    def decrypt(self, ciphertext: bytes) -> bytes:
+        return self._fernet.decrypt(ciphertext)
+
+
+class RedisTokenCache:
+    """Shared exchanged-token cache backed by Redis, encrypted at rest.
+
+    Tokens are Fernet-encrypted before storage and TTL'd via SETEX, so they
+    expire and a Redis dump yields only ciphertext. Single-flight is per-process
+    (best-effort — bounds IdP load on this worker; concurrent workers may each
+    exchange once, which is acceptable). `redis_client` is injectable for testing.
+    """
+
+    def __init__(
+        self,
+        encryptor: TokenEncryptor,
+        *,
+        redis_url: str | None = None,
+        # Any: redis.asyncio's client type is awkward to annotate across versions;
+        # this is an injection seam for a fake client in tests.
+        redis_client: Any = None,
+        key_prefix: str = "pontifex:tokx:",
+    ) -> None:
+        if redis_client is not None:
+            self._redis = redis_client
+        elif redis_url:
+            self._redis = redis_asyncio.from_url(redis_url)
+        else:
+            raise ValueError("RedisTokenCache requires redis_url or redis_client")
+        self._enc = encryptor
+        self._prefix = key_prefix
+        self._inflight: dict[str, asyncio.Future[_Secret]] = {}
+
+    async def aclose(self) -> None:
+        await self._redis.aclose()
+
+    async def get_or_load(
+        self, key: str, loader: Callable[[], Awaitable[tuple[str, int]]]
+    ) -> _Secret:
+        rkey = self._prefix + key
+        cached = await self._redis.get(rkey)
+        if cached is not None:
+            return _Secret(self._enc.decrypt(cached).decode())
+
+        inflight = self._inflight.get(key)
+        if inflight is None:
+            inflight = asyncio.ensure_future(self._load_and_store(rkey, key, loader))
+            self._inflight[key] = inflight
+        return await inflight
+
+    async def _load_and_store(
+        self, rkey: str, key: str, loader: Callable[[], Awaitable[tuple[str, int]]]
+    ) -> _Secret:
+        try:
+            value, ttl_seconds = await loader()
+            await self._redis.setex(rkey, ttl_seconds, self._enc.encrypt(value.encode()))
+            return _Secret(value)
+        finally:
+            self._inflight.pop(key, None)
+
+
+def default_token_cache() -> TokenCache:
+    """Build the token cache from the environment.
+
+    `PONTIFEX_TOKEN_CACHE=memory` (default) → in-process only, never at rest.
+    `=redis` → shared Redis, requiring `REDIS_URL` and a Fernet
+    `PONTIFEX_TOKEN_CACHE_KEY`. Missing requirements fail at startup.
+    """
+    backend = os.environ.get("PONTIFEX_TOKEN_CACHE", "memory").lower()
+    if backend == "memory":
+        return InMemoryTokenCache()
+    if backend == "redis":
+        redis_url = os.environ.get("REDIS_URL")
+        if not redis_url:
+            raise ValueError("PONTIFEX_TOKEN_CACHE=redis requires REDIS_URL")
+        key = os.environ.get("PONTIFEX_TOKEN_CACHE_KEY")
+        if not key:
+            raise ValueError(
+                "PONTIFEX_TOKEN_CACHE=redis requires PONTIFEX_TOKEN_CACHE_KEY (a Fernet key)"
+            )
+        return RedisTokenCache(FernetEncryptor(key), redis_url=redis_url)
+    raise ValueError(f"PONTIFEX_TOKEN_CACHE must be 'memory' or 'redis', got {backend!r}")
+
+
 class TokenExchange:
     """Backend-auth strategy that mints a per-user downstream token via RFC 8693.
 
@@ -185,7 +299,7 @@ class TokenExchange:
         #    TTL). A provider that omits it can opt into this fallback TTL.
         self._client_auth = client_auth
         self._default_ttl = default_ttl_seconds
-        self._cache = cache or InMemoryTokenCache()
+        self._cache = cache or default_token_cache()
         self._client = http_client or httpx.AsyncClient(timeout=timeout)
         self._breaker = breaker or CircuitBreaker(
             name=f"token-exchange:{audience}", failure_threshold=3, recovery_timeout=30.0
@@ -194,6 +308,9 @@ class TokenExchange:
 
     async def close(self) -> None:
         await self._client.aclose()
+        cache_close = getattr(self._cache, "aclose", None)
+        if cache_close is not None:
+            await cache_close()
 
     async def headers(self, ctx: AuthContext) -> dict[str, str]:
         # No subject token → health check (or a real call that should already

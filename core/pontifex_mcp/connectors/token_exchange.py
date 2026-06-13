@@ -29,7 +29,7 @@ from typing import Protocol
 import httpx
 import structlog
 
-from pontifex_mcp.connectors.adapter import ConnectorUnavailable
+from pontifex_mcp.connectors.adapter import UpstreamAuthUnavailable
 from pontifex_mcp.connectors.auth import AuthContext, _require_env
 from pontifex_mcp.utils.circuit_breaker import CircuitBreaker
 
@@ -211,7 +211,7 @@ class TokenExchange:
 
     async def _exchange(self, subject_token: str) -> tuple[str, int]:
         if not self._breaker.is_available:
-            raise ConnectorUnavailable("token-exchange circuit open")
+            raise UpstreamAuthUnavailable("token-exchange circuit open")
         form = {
             "grant_type": _GRANT_TYPE,
             "subject_token": subject_token,
@@ -233,14 +233,14 @@ class TokenExchange:
         except httpx.HTTPError as exc:
             self._breaker.record_failure()
             _logger.warning("token_exchange_unreachable", audience=self.audience, error=repr(exc))
-            raise ConnectorUnavailable(f"token endpoint unreachable: {exc!r}") from exc
+            raise UpstreamAuthUnavailable(f"token endpoint unreachable: {exc!r}") from exc
 
         if response.status_code >= 500:
             self._breaker.record_failure()
             _logger.warning(
                 "token_exchange_5xx", audience=self.audience, status=response.status_code
             )
-            raise ConnectorUnavailable(f"token endpoint returned {response.status_code}")
+            raise UpstreamAuthUnavailable(f"token endpoint returned {response.status_code}")
         if response.status_code != 200:
             # Rejected exchange — caller not delegatable or bad client config.
             # Not an outage: don't trip the breaker, don't leak the IdP body.

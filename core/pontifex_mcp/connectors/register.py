@@ -21,6 +21,7 @@ from pontifex_mcp.connectors.adapter import (
     ConnectorUnavailable,
     DownstreamClientError,
     OpenAPIAdapter,
+    UpstreamAuthUnavailable,
 )
 from pontifex_mcp.connectors.auth import AuthContext, BackendAuth
 from pontifex_mcp.connectors.spec import (
@@ -153,7 +154,17 @@ def _build_handler(operation: Operation, manager: DataSourceManager):
                 raise InvalidInput(
                     "Downstream authentication could not be established for this caller."
                 ) from exc
+            except UpstreamAuthUnavailable:
+                # The auth layer (IdP) is down — already circuit-broken inside the
+                # auth strategy. Don't trip the *downstream* connector breaker
+                # (the downstream API isn't implicated, and tripping it would lock
+                # out callers whose delegated token is still cached). Surface as
+                # retryable source_unavailable via tool_runtime. Must precede the
+                # generic handler below, since it subclasses ConnectorUnavailable.
+                raise
             except Exception as exc:
+                # A real downstream failure (network / 5xx) — count it against the
+                # connector breaker and fail over to the next adapter if any.
                 manager.record_failure(adapter.name)
                 failures.append(f"{adapter.name}: {exc!r}")
                 continue

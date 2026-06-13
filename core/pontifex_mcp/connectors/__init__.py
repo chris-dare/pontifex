@@ -24,7 +24,11 @@ Config-first: point `PONTIFEX_CONNECTORS_CONFIG` at a connectors YAML file
 tools at startup — no domain code required.
 """
 
-from pontifex_mcp.connectors.adapter import ConnectorUnavailable, OpenAPIAdapter
+from pontifex_mcp.connectors.adapter import (
+    ConnectorUnavailable,
+    OpenAPIAdapter,
+    UpstreamAuthUnavailable,
+)
 from pontifex_mcp.connectors.auth import AuthContext, BackendAuth, BearerFromEnv, HeaderFromEnv
 from pontifex_mcp.connectors.config import (
     ConnectorsConfig,
@@ -44,6 +48,7 @@ __all__ = [
     "OpenAPIAdapter",
     "TokenExchange",
     "TokenExchangeRejected",
+    "UpstreamAuthUnavailable",
     "load_connectors_config",
     "register_connectors_from_config",
     "register_openapi_tools",

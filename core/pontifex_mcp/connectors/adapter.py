@@ -18,6 +18,16 @@ class ConnectorUnavailable(Exception):
     """The downstream API could not serve the request (network error or 5xx)."""
 
 
+class UpstreamAuthUnavailable(ConnectorUnavailable):
+    """The auth layer (e.g. the OAuth token-exchange IdP) was unavailable.
+
+    A `ConnectorUnavailable` (so it still surfaces as retryable
+    `source_unavailable`), but distinct so the handler can avoid tripping the
+    *downstream* connector's circuit breaker for what is really an IdP outage —
+    the auth strategy has its own breaker for that.
+    """
+
+
 class DownstreamClientError(Exception):
     """The downstream API rejected the request (4xx) — a caller error."""
 

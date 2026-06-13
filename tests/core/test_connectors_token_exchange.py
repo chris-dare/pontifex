@@ -180,6 +180,64 @@ async def test_idp_outage_maps_to_source_unavailable(monkeypatch):
     assert err["status"] == 503
 
 
+# --- breaker isolation (#46) -------------------------------------------------
+
+
+def _build_with_manager(monkeypatch):
+    """Register a token-exchange connector and return (mcp, manager) so the
+    connector's circuit breaker can be inspected. Threshold 1: any recorded
+    failure opens it."""
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_ID", "pontifex-client")
+    monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "shhh")
+    mcp = FastMCP(name="t", stateless_http=True)
+    manager = register_openapi_tools(
+        mcp,
+        spec=SPEC,
+        domain="orders",
+        base_url=BASE_URL,
+        audit=_RecordingAudit(),
+        include=["GET /orders"],
+        auth=TokenExchange(
+            token_endpoint=IDP,
+            audience=BASE_URL,
+            client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
+            client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+        ),
+        cb_failure_threshold=1,
+    )
+    return mcp, manager
+
+
+@respx.mock
+async def test_idp_outage_does_not_trip_connector_breaker(monkeypatch):
+    respx.post(IDP).mock(return_value=httpx.Response(503))  # IdP down
+    mcp, manager = _build_with_manager(monkeypatch)
+    _set_caller(["orders:*:read"], subject_token="user-jwt")
+
+    result = await mcp.call_tool("orders_list_orders", {})
+    assert _error(result)["error_code"] == "source_unavailable"
+    # The downstream connector breaker must stay closed — the IdP being down
+    # doesn't implicate the downstream API, and tripping it would lock out
+    # callers whose delegated token is still cached. (The TokenExchange strategy
+    # has its own breaker for the IdP.)
+    assert manager.breakers["openapi:orders"].is_available is True
+
+
+@respx.mock
+async def test_downstream_5xx_does_trip_connector_breaker(monkeypatch):
+    respx.post(IDP).mock(
+        return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 300})
+    )
+    respx.get(f"{BASE_URL}/orders").mock(return_value=httpx.Response(503))  # downstream down
+    mcp, manager = _build_with_manager(monkeypatch)
+    _set_caller(["orders:*:read"], subject_token="user-jwt")
+
+    result = await mcp.call_tool("orders_list_orders", {})
+    assert _error(result)["error_code"] == "source_unavailable"
+    # A real downstream failure SHOULD open the connector breaker (contrast).
+    assert manager.breakers["openapi:orders"].is_available is False
+
+
 @pytest.fixture(autouse=True)
 def _reset_stdio():
     yield

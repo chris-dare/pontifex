@@ -1,0 +1,95 @@
+{
+  "realm": "pontifex",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 600,
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Anderson",
+      "credentials": [{ "type": "password", "value": "alice", "temporary": false }],
+      "attributes": { "permissions": ["billing:*:read"] }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Brown",
+      "credentials": [{ "type": "password", "value": "bob", "temporary": false }],
+      "attributes": { "permissions": ["billing:*:read"] }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "mcp-cli",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "aud-pontifex",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "pontifex",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "permissions",
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "pontifex",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "pontifex-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-billing-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "billing-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "billing-api",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "billing-secret",
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ]
+}

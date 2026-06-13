@@ -1,0 +1,14 @@
+connectors:
+  - domain: billing
+    spec: http://downstream:8000/openapi.json
+    base_url: http://downstream:8000
+    auth:
+      type: token_exchange
+      token_endpoint: http://keycloak:8080/realms/pontifex/protocol/openid-connect/token
+      audience: billing-api
+      client_id_env: PONTIFEX_OAUTH_CLIENT_ID
+      client_secret_env: PONTIFEX_OAUTH_CLIENT_SECRET
+    include:
+      - GET /invoices
+    names:
+      GET /invoices: list_invoices

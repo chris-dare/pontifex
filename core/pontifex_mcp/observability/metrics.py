@@ -9,6 +9,10 @@ subject identifiers.
 
 from typing import Any
 
+# Any: Logfire's module and its metric proxy types aren't statically importable
+# without hard-depending on logfire; these helpers return either a logfire metric
+# or a _NoopMetric, so the call sites only rely on the .add/.record duck-shape.
+
 
 def _import_logfire() -> Any:
     try:

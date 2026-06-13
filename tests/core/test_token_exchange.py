@@ -26,6 +26,19 @@ def _jwt_with_aud(aud) -> str:
     return f"header.{payload}.sig"
 
 
+class _RecordingMetric:
+    """Captures (amount, attributes) so tests can assert metric labels."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[float, dict]] = []
+
+    def add(self, amount, attributes=None):
+        self.calls.append((amount, attributes or {}))
+
+    def record(self, amount, attributes=None):
+        self.calls.append((amount, attributes or {}))
+
+
 def _make(monkeypatch, *, clock=None, breaker=None, cache=None) -> TokenExchange:
     monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_ID", "pontifex-client")
     monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "shhh")
@@ -52,6 +65,58 @@ def test_secret_never_reveals_in_str_or_repr():
     assert "super-secret-token" not in str(s)
     assert "super-secret-token" not in f"{s}"
     assert s.reveal() == "super-secret-token"
+
+
+# --- metrics (#48) -----------------------------------------------------------
+
+
+@respx.mock
+async def test_metrics_labels_carry_no_token_or_subject(monkeypatch):
+    import pontifex_mcp.connectors.token_exchange as te_mod
+
+    respx.post(IDP).mock(
+        return_value=httpx.Response(200, json={"access_token": "tok-xyz", "expires_in": 300})
+    )
+    ex_req, ex_dur, cache_req = _RecordingMetric(), _RecordingMetric(), _RecordingMetric()
+    monkeypatch.setattr(te_mod, "_exchange_requests", ex_req)
+    monkeypatch.setattr(te_mod, "_exchange_duration", ex_dur)
+    monkeypatch.setattr(te_mod, "_cache_requests", cache_req)
+
+    te = _make(monkeypatch)
+    ctx = AuthContext(subject_token="user-jwt-SECRET")
+
+    await te.headers(ctx)  # miss → exchange
+    await te.headers(ctx)  # hit → no exchange
+
+    # Exchange happened exactly once (second call was a cache hit).
+    assert [c[1]["outcome"] for c in ex_req.calls] == ["ok"]
+    assert [c[1].get("audience") for c in ex_req.calls] == [AUDIENCE]
+    # Cache recorded one miss then one hit.
+    assert [c[1]["result"] for c in cache_req.calls] == ["miss", "hit"]
+
+    # The security invariant: no token, subject, or cache key in any label.
+    all_attrs = [c[1] for c in (*ex_req.calls, *ex_dur.calls, *cache_req.calls)]
+    blob = repr(all_attrs)
+    assert "tok-xyz" not in blob  # exchanged token
+    assert "user-jwt-SECRET" not in blob  # subject token
+    allowed_keys = {"audience", "outcome", "result"}
+    for attrs in all_attrs:
+        assert set(attrs) <= allowed_keys
+
+
+@respx.mock
+async def test_metrics_records_unavailable_outcome(monkeypatch):
+    import pontifex_mcp.connectors.token_exchange as te_mod
+
+    respx.post(IDP).mock(return_value=httpx.Response(503))
+    ex_req = _RecordingMetric()
+    monkeypatch.setattr(te_mod, "_exchange_requests", ex_req)
+    monkeypatch.setattr(te_mod, "_exchange_duration", _RecordingMetric())
+
+    te = _make(monkeypatch)
+    with pytest.raises(ConnectorUnavailable):
+        await te.headers(AuthContext(subject_token="user-jwt"))
+    assert [c[1]["outcome"] for c in ex_req.calls] == ["unavailable"]
 
 
 # --- construction ------------------------------------------------------------

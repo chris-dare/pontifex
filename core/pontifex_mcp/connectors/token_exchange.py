@@ -5,11 +5,12 @@ that token at the shared IdP for a *new* token carrying the downstream API's
 audience, on behalf of the user — the downstream then enforces its own per-user
 authorization. The inbound token is never forwarded (no passthrough).
 
-Security posture (see issue #41):
-  - Exchanged tokens are cached **in process memory only**, never at rest.
-    Encrypting an in-process cache is theatre — the key is co-resident — so the
-    real controls are short TTL, a redaction wrapper, a bounded LRU, and
-    keeping tokens out of logs/errors.
+Security posture (see issues #41, #47):
+  - Exchanged tokens are cached via a `TokenCache`: in-process memory by default
+    (never at rest), or Redis with Fernet encryption-at-rest (key from the
+    environment, not Redis). For the in-memory backend, encryption would be
+    theatre — the key is co-resident — so the real controls there are short TTL,
+    a redaction wrapper, a bounded LRU, and keeping tokens out of logs/errors.
   - Cache key is `sha256(subject_token):audience` — never the plaintext token,
     and audience-scoped so a token minted for one connector can't serve another.
   - Fail closed: any ambiguity (IdP unreachable, malformed response, missing
@@ -93,9 +94,10 @@ def _b64url_decode(segment: str) -> bytes:
 class TokenCache(Protocol):
     """Cache seam for exchanged tokens.
 
-    v1 ships only :class:`InMemoryTokenCache` (tokens never leave the process).
-    A future shared backend (encrypted Redis, short TTL) implements this same
-    interface so it drops in without touching :class:`TokenExchange`.
+    Implemented by :class:`InMemoryTokenCache` (tokens never leave the process)
+    and :class:`RedisTokenCache` (shared, encrypted at rest). Selected at runtime
+    by :func:`default_token_cache`; both drop in without touching
+    :class:`TokenExchange`.
     """
 
     async def get_or_load(
@@ -370,6 +372,11 @@ class TokenExchange:
             raise
         except TokenExchangeRejected:
             outcome = "rejected"
+            raise
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, not Exception — catch it so a
+            # cancelled exchange isn't recorded as a success.
+            outcome = "cancelled"
             raise
         except Exception:
             outcome = "error"

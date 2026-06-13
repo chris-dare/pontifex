@@ -168,12 +168,20 @@ A connector is *either* service-auth *or* user-auth — never both. **API-key ca
 `invalid_input`. If a backend genuinely needs both modes, define two connector entries with distinct
 domains.
 
-!!! note "Token-exchange caveats (v1)"
+!!! note "Token-exchange caveats"
 
-    The exchanged-token cache is in-process only (not shared across workers; an encrypted shared
-    backend is a future option). Audience is verified on inspectable (JWT) exchanged tokens; opaque
-    tokens are trusted. The IdP is on the call path — its failures surface as `source_unavailable`
-    and are circuit-broken, while a refused exchange surfaces as `invalid_input`.
+    Audience is verified on inspectable (JWT) exchanged tokens; opaque tokens are trusted. The IdP is
+    on the call path — its failures surface as `source_unavailable` and are circuit-broken
+    independently of the downstream connector, while a refused exchange surfaces as `invalid_input`.
+
+#### Observability
+
+When Logfire is configured, the token-exchange path emits metrics (audience / outcome / cache-result
+labels only — never tokens):
+
+- `pontifex.token_exchange.requests` — exchanges by `outcome` (`ok` / `rejected` / `unavailable` / `error`).
+- `pontifex.token_exchange.duration_ms` — IdP exchange latency.
+- `pontifex.token_cache.requests` — cache lookups by `result` (`hit` / `miss` / `coalesced`).
 
 ## Resilience and errors
 

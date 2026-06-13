@@ -5,11 +5,12 @@ that token at the shared IdP for a *new* token carrying the downstream API's
 audience, on behalf of the user — the downstream then enforces its own per-user
 authorization. The inbound token is never forwarded (no passthrough).
 
-Security posture (see issue #41):
-  - Exchanged tokens are cached **in process memory only**, never at rest.
-    Encrypting an in-process cache is theatre — the key is co-resident — so the
-    real controls are short TTL, a redaction wrapper, a bounded LRU, and
-    keeping tokens out of logs/errors.
+Security posture (see issues #41, #47):
+  - Exchanged tokens are cached via a `TokenCache`: in-process memory by default
+    (never at rest), or Redis with Fernet encryption-at-rest (key from the
+    environment, not Redis). For the in-memory backend, encryption would be
+    theatre — the key is co-resident — so the real controls there are short TTL,
+    a redaction wrapper, a bounded LRU, and keeping tokens out of logs/errors.
   - Cache key is `sha256(subject_token):audience` — never the plaintext token,
     and audience-scoped so a token minted for one connector can't serve another.
   - Fail closed: any ambiguity (IdP unreachable, malformed response, missing
@@ -33,12 +34,26 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from pontifex_mcp.connectors.adapter import UpstreamAuthUnavailable
 from pontifex_mcp.connectors.auth import AuthContext, _require_env
+from pontifex_mcp.observability.metrics import counter, histogram
 from pontifex_mcp.utils.circuit_breaker import CircuitBreaker
 
 _logger = structlog.get_logger(__name__)
 
 _GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
 _ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+
+# Observability for the token-exchange path (#48). Attributes are non-sensitive:
+# the downstream audience, the exchange outcome, and the cache result — never
+# tokens or subject identifiers.
+_exchange_requests = counter(
+    "pontifex.token_exchange.requests", description="Token-exchange attempts by outcome"
+)
+_exchange_duration = histogram(
+    "pontifex.token_exchange.duration_ms", unit="ms", description="Token-exchange IdP call duration"
+)
+_cache_requests = counter(
+    "pontifex.token_cache.requests", description="Token cache lookups by result"
+)
 
 
 class TokenExchangeRejected(Exception):
@@ -79,9 +94,10 @@ def _b64url_decode(segment: str) -> bytes:
 class TokenCache(Protocol):
     """Cache seam for exchanged tokens.
 
-    v1 ships only :class:`InMemoryTokenCache` (tokens never leave the process).
-    A future shared backend (encrypted Redis, short TTL) implements this same
-    interface so it drops in without touching :class:`TokenExchange`.
+    Implemented by :class:`InMemoryTokenCache` (tokens never leave the process)
+    and :class:`RedisTokenCache` (shared, encrypted at rest). Selected at runtime
+    by :func:`default_token_cache`; both drop in without touching
+    :class:`TokenExchange`.
     """
 
     async def get_or_load(
@@ -115,6 +131,7 @@ class InMemoryTokenCache:
             secret, expiry = entry
             if expiry > now:
                 self._entries.move_to_end(key)
+                _cache_requests.add(1, {"result": "hit"})
                 return secret
             del self._entries[key]
 
@@ -124,8 +141,11 @@ class InMemoryTokenCache:
         # warnings) and propagates to each caller.
         inflight = self._inflight.get(key)
         if inflight is None:
+            _cache_requests.add(1, {"result": "miss"})
             inflight = asyncio.ensure_future(self._load_and_store(key, loader))
             self._inflight[key] = inflight
+        else:
+            _cache_requests.add(1, {"result": "coalesced"})
         return await inflight
 
     async def _load_and_store(
@@ -217,7 +237,9 @@ class RedisTokenCache:
         cached = await self._redis.get(rkey)
         if cached is not None:
             try:
-                return _Secret(self._enc.decrypt(cached).decode())
+                secret = _Secret(self._enc.decrypt(cached).decode())
+                _cache_requests.add(1, {"result": "hit"})
+                return secret
             except InvalidToken:
                 # Key rotated or value corrupt — treat as a miss and re-mint,
                 # rather than failing the call (and tripping the connector
@@ -226,8 +248,11 @@ class RedisTokenCache:
 
         inflight = self._inflight.get(key)
         if inflight is None:
+            _cache_requests.add(1, {"result": "miss"})
             inflight = asyncio.ensure_future(self._load_and_store(rkey, key, loader))
             self._inflight[key] = inflight
+        else:
+            _cache_requests.add(1, {"result": "coalesced"})
         return await inflight
 
     async def _load_and_store(
@@ -337,6 +362,32 @@ class TokenExchange:
         return f"{digest}:{self.audience}"
 
     async def _exchange(self, subject_token: str) -> tuple[str, int]:
+        # Time the exchange and record its outcome (audience-labelled, no tokens).
+        start = time.monotonic()
+        outcome = "ok"
+        try:
+            return await self._exchange_inner(subject_token)
+        except UpstreamAuthUnavailable:
+            outcome = "unavailable"
+            raise
+        except TokenExchangeRejected:
+            outcome = "rejected"
+            raise
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, not Exception — catch it so a
+            # cancelled exchange isn't recorded as a success.
+            outcome = "cancelled"
+            raise
+        except Exception:
+            outcome = "error"
+            raise
+        finally:
+            _exchange_duration.record(
+                (time.monotonic() - start) * 1000.0, {"audience": self.audience}
+            )
+            _exchange_requests.add(1, {"audience": self.audience, "outcome": outcome})
+
+    async def _exchange_inner(self, subject_token: str) -> tuple[str, int]:
         if not self._breaker.is_available:
             raise UpstreamAuthUnavailable("token-exchange circuit open")
         form = {

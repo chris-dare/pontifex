@@ -55,6 +55,11 @@ class OpenAPIAdapter:
 
     async def close(self) -> None:
         await self._client.aclose()
+        # Cascade to the auth strategy if it owns resources (e.g. TokenExchange's
+        # HTTP client). Env strategies have no close().
+        auth_close = getattr(self._auth, "close", None)
+        if auth_close is not None:
+            await auth_close()
 
     async def health_check(self) -> bool:
         try:

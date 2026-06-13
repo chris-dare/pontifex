@@ -55,6 +55,18 @@ def test_secret_never_reveals_in_str_or_repr():
 # --- construction ------------------------------------------------------------
 
 
+async def test_adapter_close_cascades_to_token_exchange(monkeypatch):
+    """Closing the connector adapter on shutdown also closes the TokenExchange
+    HTTP client, so no client is leaked."""
+    from pontifex_mcp.connectors.adapter import OpenAPIAdapter
+
+    te = _make(monkeypatch)
+    adapter = OpenAPIAdapter(domain="billing", base_url="https://api.test", auth=te)
+    await adapter.close()
+    assert adapter._client.is_closed
+    assert te._client.is_closed
+
+
 def test_missing_client_creds_fails_at_construction(monkeypatch):
     monkeypatch.delenv("PONTIFEX_OAUTH_CLIENT_ID", raising=False)
     monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "shhh")

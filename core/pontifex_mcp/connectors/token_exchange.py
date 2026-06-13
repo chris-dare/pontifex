@@ -116,22 +116,24 @@ class InMemoryTokenCache:
                 return secret
             del self._entries[key]
 
+        # Single-flight: concurrent misses for the same key share one task, so
+        # the loader runs once. Both the creator and any waiters await the task,
+        # so a loader failure is retrieved by all of them (no orphaned-exception
+        # warnings) and propagates to each caller.
         inflight = self._inflight.get(key)
-        if inflight is not None:
-            return await inflight  # coalesce onto the in-flight exchange
+        if inflight is None:
+            inflight = asyncio.ensure_future(self._load_and_store(key, loader))
+            self._inflight[key] = inflight
+        return await inflight
 
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[_Secret] = loop.create_future()
-        self._inflight[key] = future
+    async def _load_and_store(
+        self, key: str, loader: Callable[[], Awaitable[tuple[str, int]]]
+    ) -> _Secret:
         try:
             value, ttl_seconds = await loader()
             secret = _Secret(value)
             self._store(key, secret, self._clock() + ttl_seconds)
-            future.set_result(secret)
             return secret
-        except Exception as exc:
-            future.set_exception(exc)
-            raise
         finally:
             self._inflight.pop(key, None)
 

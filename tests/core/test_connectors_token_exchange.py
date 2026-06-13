@@ -224,6 +224,28 @@ async def test_idp_outage_does_not_trip_connector_breaker(monkeypatch):
 
 
 @respx.mock
+async def test_cached_token_survives_idp_outage(monkeypatch):
+    # The headline benefit of breaker isolation: once a user's token is cached,
+    # an IdP outage doesn't lock them out — the cache short-circuits the IdP.
+    idp = respx.post(IDP).mock(
+        side_effect=[
+            httpx.Response(200, json={"access_token": "tok", "expires_in": 300}),
+            httpx.Response(503),  # IdP goes down after the first exchange
+        ]
+    )
+    respx.get(f"{BASE_URL}/orders").mock(return_value=httpx.Response(200, json=[{"id": 1}]))
+    mcp, _ = _build(monkeypatch)
+    _set_caller(["orders:*:read"], subject_token="user-jwt")
+
+    first = await mcp.call_tool("orders_list_orders", {})
+    assert _payload(first)["data"] == [{"id": 1}]
+
+    second = await mcp.call_tool("orders_list_orders", {})
+    assert _payload(second)["data"] == [{"id": 1}]  # served despite the IdP being down
+    assert idp.call_count == 1  # second call hit the token cache, never the IdP
+
+
+@respx.mock
 async def test_downstream_5xx_does_trip_connector_breaker(monkeypatch):
     respx.post(IDP).mock(
         return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 300})

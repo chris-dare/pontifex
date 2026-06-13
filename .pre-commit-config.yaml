@@ -1,4 +1,13 @@
+# `pre-commit install` wires up both the pre-commit and commit-msg stages.
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.27.2
     hooks:

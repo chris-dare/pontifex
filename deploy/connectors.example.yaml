@@ -38,4 +38,6 @@ connectors:
   #     client_id_env: PONTIFEX_OAUTH_CLIENT_ID
   #     client_secret_env: PONTIFEX_OAUTH_CLIENT_SECRET
   #   include:
+  #     - GET /invoices
   #     - GET /invoices/{invoice_id}
+  #     - GET /customers/{customer_id}

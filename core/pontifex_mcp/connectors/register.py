@@ -16,12 +16,13 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from pontifex_mcp.adapters.manager import DataSourceManager
 from pontifex_mcp.audit import AuditWriter
+from pontifex_mcp.auth.context import resolve_caller, resolve_subject_token
 from pontifex_mcp.connectors.adapter import (
     ConnectorUnavailable,
     DownstreamClientError,
     OpenAPIAdapter,
 )
-from pontifex_mcp.connectors.auth import BackendAuth
+from pontifex_mcp.connectors.auth import AuthContext, BackendAuth
 from pontifex_mcp.connectors.spec import (
     Operation,
     load_spec,
@@ -124,13 +125,17 @@ def _register_operation(
 
 def _build_handler(operation: Operation, manager: DataSourceManager):
     async def handler(**kwargs: Any) -> dict[str, Any]:
-        kwargs.pop("ctx", None)
+        ctx = kwargs.pop("ctx", None)
+        auth_ctx = AuthContext(
+            subject_token=resolve_subject_token(ctx),
+            caller=resolve_caller(ctx),
+        )
         failures: list[str] = []
         for adapter in manager.get_available_adapters():
             if not isinstance(adapter, OpenAPIAdapter):
                 continue
             try:
-                status_code, data = await adapter.call(operation, kwargs)
+                status_code, data = await adapter.call(operation, kwargs, auth_ctx)
             except DownstreamClientError as exc:
                 # Caller error (4xx) — surface as invalid_input, don't trip the breaker.
                 raise InvalidInput(str(exc)) from exc

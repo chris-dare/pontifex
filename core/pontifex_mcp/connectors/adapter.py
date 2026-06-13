@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 import httpx
 
-from pontifex_mcp.connectors.auth import BackendAuth
+from pontifex_mcp.connectors.auth import AuthContext, BackendAuth
 from pontifex_mcp.connectors.spec import Operation
 
 
@@ -49,15 +49,21 @@ class OpenAPIAdapter:
 
     async def health_check(self) -> bool:
         try:
-            response = await self._client.get(self.base_url, headers=self._headers(), timeout=3.0)
+            # Health checks carry no caller, so pass an empty AuthContext: a
+            # token-exchange strategy degrades to no-auth, while env strategies
+            # still attach their service credential.
+            headers = await self._auth_headers(AuthContext())
+            response = await self._client.get(self.base_url, headers=headers, timeout=3.0)
             return response.status_code < 500
         except Exception:
             return False
 
-    def _headers(self) -> dict[str, str]:
-        return self._auth.headers() if self._auth else {}
+    async def _auth_headers(self, ctx: AuthContext) -> dict[str, str]:
+        return await self._auth.headers(ctx) if self._auth else {}
 
-    async def call(self, operation: Operation, arguments: dict[str, Any]) -> tuple[int, Any]:
+    async def call(
+        self, operation: Operation, arguments: dict[str, Any], auth_ctx: AuthContext
+    ) -> tuple[int, Any]:
         """Execute one operation; returns (status_code, decoded body)."""
         path = operation.path
         query: dict[str, Any] = {}
@@ -76,7 +82,7 @@ class OpenAPIAdapter:
                 f"{self.base_url}{path}",
                 params=query,
                 json=body,
-                headers=self._headers(),
+                headers=await self._auth_headers(auth_ctx),
             )
         except httpx.HTTPError as exc:
             raise ConnectorUnavailable(f"{operation.key}: {exc!r}") from exc

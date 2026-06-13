@@ -24,6 +24,7 @@ import os
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 import httpx
 import structlog
@@ -71,6 +72,19 @@ class _Secret:
 def _b64url_decode(segment: str) -> bytes:
     padding = "=" * (-len(segment) % 4)
     return base64.urlsafe_b64decode(segment + padding)
+
+
+class TokenCache(Protocol):
+    """Cache seam for exchanged tokens.
+
+    v1 ships only :class:`InMemoryTokenCache` (tokens never leave the process).
+    A future shared backend (encrypted Redis, short TTL) implements this same
+    interface so it drops in without touching :class:`TokenExchange`.
+    """
+
+    async def get_or_load(
+        self, key: str, loader: Callable[[], Awaitable[tuple[str, int]]]
+    ) -> "_Secret": ...
 
 
 class InMemoryTokenCache:
@@ -145,7 +159,7 @@ class TokenExchange:
         audience: str,
         client_id_env: str,
         client_secret_env: str,
-        cache: InMemoryTokenCache | None = None,
+        cache: TokenCache | None = None,
         http_client: httpx.AsyncClient | None = None,
         breaker: CircuitBreaker | None = None,
         skew_seconds: int = 30,

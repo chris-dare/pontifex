@@ -30,6 +30,7 @@ from pontifex_mcp.connectors.spec import (
     parse_operations,
     select_operations,
 )
+from pontifex_mcp.connectors.token_exchange import TokenExchangeRejected
 from pontifex_mcp.tool_runtime import InvalidInput, tool_runtime
 
 # JSON-schema primitive -> Python annotation for the generated signature.
@@ -134,11 +135,24 @@ def _build_handler(operation: Operation, manager: DataSourceManager):
         for adapter in manager.get_available_adapters():
             if not isinstance(adapter, OpenAPIAdapter):
                 continue
+            # Token-exchange connectors need the caller's own token. An API-key
+            # caller has none — reject cleanly rather than reaching downstream.
+            if adapter.requires_subject_token and auth_ctx.subject_token is None:
+                raise InvalidInput(
+                    "This connector requires user authentication (an OAuth bearer "
+                    "token); API-key callers cannot use it."
+                )
             try:
                 status_code, data = await adapter.call(operation, kwargs, auth_ctx)
             except DownstreamClientError as exc:
                 # Caller error (4xx) — surface as invalid_input, don't trip the breaker.
                 raise InvalidInput(str(exc)) from exc
+            except TokenExchangeRejected as exc:
+                # IdP refused the exchange for this caller — clean, non-retryable,
+                # not an outage. Don't leak the IdP detail or trip the breaker.
+                raise InvalidInput(
+                    "Downstream authentication could not be established for this caller."
+                ) from exc
             except Exception as exc:
                 manager.record_failure(adapter.name)
                 failures.append(f"{adapter.name}: {exc!r}")

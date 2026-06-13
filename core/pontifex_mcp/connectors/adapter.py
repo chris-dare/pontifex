@@ -44,6 +44,15 @@ class OpenAPIAdapter:
         self._auth = auth
         self._client = httpx.AsyncClient(timeout=timeout)
 
+    @property
+    def requires_subject_token(self) -> bool:
+        """Whether this connector's auth needs the caller's token (token exchange).
+
+        When True, a caller without a subject token (e.g. an API-key caller) can't
+        be served and the handler rejects the call rather than reaching downstream.
+        """
+        return getattr(self._auth, "requires_subject_token", False)
+
     async def close(self) -> None:
         await self._client.aclose()
 

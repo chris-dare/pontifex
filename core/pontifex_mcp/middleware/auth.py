@@ -106,6 +106,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not raw_token:
             return self._auth_error(request, "Empty bearer token.")
 
+        # The subject token is the inbound JWT, used downstream for OAuth token
+        # exchange (RFC 8693). API-key callers have no exchangeable token.
+        subject_token: str | None = None
         if raw_token.startswith(_API_KEY_PREFIX):
             identity = await self.resolver.resolve(raw_token)
             if identity is None:
@@ -119,8 +122,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 identity = await self.jwt_validator.validate(raw_token)
             except JWTValidationError as exc:
                 return self._auth_error(request, str(exc))
+            subject_token = raw_token
 
         request.state.caller = identity
+        request.state.subject_token = subject_token
 
         if self.rate_limiter is not None and not await self.rate_limiter.allow(
             identity.owner_id, identity.rate_limit_rpm

@@ -25,21 +25,25 @@ tools at startup — no domain code required.
 """
 
 from pontifex_mcp.connectors.adapter import ConnectorUnavailable, OpenAPIAdapter
-from pontifex_mcp.connectors.auth import BackendAuth, BearerFromEnv, HeaderFromEnv
+from pontifex_mcp.connectors.auth import AuthContext, BackendAuth, BearerFromEnv, HeaderFromEnv
 from pontifex_mcp.connectors.config import (
     ConnectorsConfig,
     load_connectors_config,
     register_connectors_from_config,
 )
 from pontifex_mcp.connectors.register import register_openapi_tools
+from pontifex_mcp.connectors.token_exchange import TokenExchange, TokenExchangeRejected
 
 __all__ = [
+    "AuthContext",
     "BackendAuth",
     "BearerFromEnv",
     "ConnectorUnavailable",
     "ConnectorsConfig",
     "HeaderFromEnv",
     "OpenAPIAdapter",
+    "TokenExchange",
+    "TokenExchangeRejected",
     "load_connectors_config",
     "register_connectors_from_config",
     "register_openapi_tools",

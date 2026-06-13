@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 import httpx
 
-from pontifex_mcp.connectors.auth import BackendAuth
+from pontifex_mcp.connectors.auth import AuthContext, BackendAuth
 from pontifex_mcp.connectors.spec import Operation
 
 
@@ -44,20 +44,40 @@ class OpenAPIAdapter:
         self._auth = auth
         self._client = httpx.AsyncClient(timeout=timeout)
 
+    @property
+    def requires_subject_token(self) -> bool:
+        """Whether this connector's auth needs the caller's token (token exchange).
+
+        When True, a caller without a subject token (e.g. an API-key caller) can't
+        be served and the handler rejects the call rather than reaching downstream.
+        """
+        return getattr(self._auth, "requires_subject_token", False)
+
     async def close(self) -> None:
         await self._client.aclose()
+        # Cascade to the auth strategy if it owns resources (e.g. TokenExchange's
+        # HTTP client). Env strategies have no close().
+        auth_close = getattr(self._auth, "close", None)
+        if auth_close is not None:
+            await auth_close()
 
     async def health_check(self) -> bool:
         try:
-            response = await self._client.get(self.base_url, headers=self._headers(), timeout=3.0)
+            # Health checks carry no caller, so pass an empty AuthContext: a
+            # token-exchange strategy degrades to no-auth, while env strategies
+            # still attach their service credential.
+            headers = await self._auth_headers(AuthContext())
+            response = await self._client.get(self.base_url, headers=headers, timeout=3.0)
             return response.status_code < 500
         except Exception:
             return False
 
-    def _headers(self) -> dict[str, str]:
-        return self._auth.headers() if self._auth else {}
+    async def _auth_headers(self, ctx: AuthContext) -> dict[str, str]:
+        return await self._auth.headers(ctx) if self._auth else {}
 
-    async def call(self, operation: Operation, arguments: dict[str, Any]) -> tuple[int, Any]:
+    async def call(
+        self, operation: Operation, arguments: dict[str, Any], auth_ctx: AuthContext
+    ) -> tuple[int, Any]:
         """Execute one operation; returns (status_code, decoded body)."""
         path = operation.path
         query: dict[str, Any] = {}
@@ -76,7 +96,7 @@ class OpenAPIAdapter:
                 f"{self.base_url}{path}",
                 params=query,
                 json=body,
-                headers=self._headers(),
+                headers=await self._auth_headers(auth_ctx),
             )
         except httpx.HTTPError as exc:
             raise ConnectorUnavailable(f"{operation.key}: {exc!r}") from exc

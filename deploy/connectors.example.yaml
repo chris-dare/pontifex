@@ -24,3 +24,20 @@ connectors:
     # when those are machine-generated noise (tool becomes <domain>_<name>):
     # names:
     #   GET /orders/{order_id}: get_order
+
+  # Per-user auth for a backend that enforces its own permissions: Pontifex
+  # exchanges the caller's token at the IdP (RFC 8693) for one minted for this
+  # backend's audience, on behalf of the user. API-key callers can't use this.
+  # - domain: billing
+  #   spec: https://billing.internal/openapi.json
+  #   base_url: https://billing.internal
+  #   auth:
+  #     type: token_exchange
+  #     token_endpoint: https://idp.example.com/oauth/token
+  #     audience: https://billing.internal
+  #     client_id_env: PONTIFEX_OAUTH_CLIENT_ID
+  #     client_secret_env: PONTIFEX_OAUTH_CLIENT_SECRET
+  #   include:
+  #     - GET /invoices
+  #     - GET /invoices/{invoice_id}
+  #     - GET /customers/{customer_id}

@@ -82,6 +82,12 @@ def create_mcp_http_app(
             finally:
                 if jwt_validator is not None:
                     await jwt_validator.aclose()
+                # Close connector-owned HTTP clients (adapter + its auth).
+                for manager in connector_managers.values():
+                    for adapter in manager.adapters:
+                        closer = getattr(adapter, "close", None)
+                        if closer is not None:
+                            await closer()
 
     app = FastAPI(title=f"{domain_name}-mcp", lifespan=lifespan)
 

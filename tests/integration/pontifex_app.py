@@ -1,4 +1,4 @@
-"""ASGI entrypoint for the Pontifex HTTP MCP server in the e2e stack.
+"""ASGI entrypoint for the Pontifex HTTP MCP server in the integration stack.
 
 Connectors-only (no hand-written tools): tools come from
 PONTIFEX_CONNECTORS_CONFIG, which defines a `token_exchange` connector against
@@ -14,7 +14,7 @@ async def _health() -> dict[str, str]:
 
 settings = CoreSettings()
 app = create_mcp_http_app(
-    "e2e",
+    "integration",
     settings,
     register_tools=lambda mcp, audit: None,
     health_check=_health,

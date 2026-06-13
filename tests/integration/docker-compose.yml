@@ -1,11 +1,11 @@
-name: pontifex-e2e
+name: pontifex-integration
 
-# Full token-exchange e2e (#41): real Keycloak (RFC 8693), Postgres, Redis, a
-# downstream resource server that validates audience, and the Pontifex HTTP MCP
-# server. The `test` service (profile: test) runs the assertions.
+# Token-exchange integration stack (#41): real Keycloak (RFC 8693), Postgres,
+# Redis, a downstream resource server that validates audience, and the Pontifex
+# HTTP MCP server. The `test` service (profile: test) runs the assertions.
 #
 #   docker compose up -d --build           # bring up the stack
-#   docker compose run --rm test           # run the e2e checks
+#   docker compose run --rm test           # run the integration checks
 #   docker compose down -v                 # tear down
 
 services:
@@ -43,10 +43,10 @@ services:
       - "8080:8080"
 
   migrate:
-    image: pontifex-e2e:latest
+    image: pontifex-integration:latest
     build:
       context: ../..
-      dockerfile: tests/e2e/Dockerfile
+      dockerfile: tests/integration/Dockerfile
     command: ["uv", "run", "--package", "pontifex-mcp", "alembic", "-c", "alembic/alembic.ini", "upgrade", "heads"]
     environment:
       DATABASE_URL: postgresql+asyncpg://pontifex:pontifex@postgres:5432/pontifex
@@ -55,11 +55,11 @@ services:
         condition: service_healthy
 
   downstream:
-    image: pontifex-e2e:latest
+    image: pontifex-integration:latest
     build:
       context: ../..
-      dockerfile: tests/e2e/Dockerfile
-    command: ["uv", "run", "--package", "pontifex-mcp", "uvicorn", "downstream_app:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "tests/e2e"]
+      dockerfile: tests/integration/Dockerfile
+    command: ["uv", "run", "--package", "pontifex-mcp", "uvicorn", "downstream_app:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "tests/integration"]
     environment:
       OIDC_ISSUER: http://keycloak:8080/realms/pontifex
       OIDC_JWKS_URL: http://keycloak:8080/realms/pontifex/protocol/openid-connect/certs
@@ -74,11 +74,11 @@ services:
       start_period: 5s
 
   pontifex:
-    image: pontifex-e2e:latest
+    image: pontifex-integration:latest
     build:
       context: ../..
-      dockerfile: tests/e2e/Dockerfile
-    command: ["uv", "run", "--package", "pontifex-mcp", "uvicorn", "pontifex_app:app", "--host", "0.0.0.0", "--port", "8080", "--app-dir", "tests/e2e"]
+      dockerfile: tests/integration/Dockerfile
+    command: ["uv", "run", "--package", "pontifex-mcp", "uvicorn", "pontifex_app:app", "--host", "0.0.0.0", "--port", "8080", "--app-dir", "tests/integration"]
     environment:
       DATABASE_URL: postgresql+asyncpg://pontifex:pontifex@postgres:5432/pontifex
       REDIS_URL: redis://redis:6379/0
@@ -86,7 +86,7 @@ services:
       AUTH_ISSUER: http://keycloak:8080/realms/pontifex
       AUTH_AUDIENCE: pontifex
       AUTH_SCOPES_CLAIM: permissions
-      PONTIFEX_CONNECTORS_CONFIG: tests/e2e/connectors.yaml
+      PONTIFEX_CONNECTORS_CONFIG: tests/integration/connectors.yaml
       PONTIFEX_OAUTH_CLIENT_ID: pontifex
       PONTIFEX_OAUTH_CLIENT_SECRET: pontifex-secret
     depends_on:
@@ -108,11 +108,11 @@ services:
       start_period: 5s
 
   test:
-    image: pontifex-e2e:latest
+    image: pontifex-integration:latest
     build:
       context: ../..
-      dockerfile: tests/e2e/Dockerfile
-    command: ["uv", "run", "--package", "pontifex-mcp", "python", "tests/e2e/run_e2e.py"]
+      dockerfile: tests/integration/Dockerfile
+    command: ["uv", "run", "--package", "pontifex-mcp", "python", "tests/integration/run_integration.py"]
     environment:
       KEYCLOAK_URL: http://keycloak:8080
       PONTIFEX_URL: http://pontifex:8080

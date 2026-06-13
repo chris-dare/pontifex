@@ -1,10 +1,12 @@
-# Token-exchange e2e (#41)
+# Token-exchange integration test (#41)
 
-A full end-to-end test of the `token_exchange` connector against a **real
+A system integration test of the `token_exchange` connector against a **real
 Keycloak** (RFC 8693), proving per-user downstream delegation works through the
 real HTTP path — including `AuthMiddleware` validating the caller's signed JWT
 and capturing the subject token (the one path the in-process unit tests can't
-cover).
+cover). It exercises Pontifex integrated with real instances of its external
+dependencies (an OIDC provider, an OAuth-protected resource server, Postgres,
+Redis); the downstream API and Keycloak realm are representative stand-ins.
 
 ## Stack (`docker-compose.yml`)
 
@@ -15,14 +17,14 @@ cover).
 | `migrate` | one-shot `alembic upgrade heads` |
 | `downstream` | a resource server (`downstream_app.py`) that verifies the bearer token's signature **and audience** (`billing-api`) against Keycloak's JWKS |
 | `pontifex` | the Pontifex HTTP MCP server (`pontifex_app.py`), connectors-only, with a `token_exchange` connector (`connectors.yaml`) |
-| `test` | the assertions (`run_e2e.py`) |
+| `test` | the assertions (`run_integration.py`) |
 
 ## Run
 
 ```bash
-cd tests/e2e
+cd tests/integration
 docker compose up -d --build        # bring up the stack (Keycloak ~30s to import)
-docker compose run --rm test        # run the e2e checks
+docker compose run --rm test        # run the integration checks
 docker compose down -v              # tear down
 ```
 

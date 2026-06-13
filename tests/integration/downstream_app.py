@@ -1,4 +1,4 @@
-"""Downstream 'billing' resource server for the e2e stack.
+"""Downstream 'billing' resource server for the integration stack.
 
 A real OAuth resource server: it verifies the bearer token's signature against
 Keycloak's JWKS and requires `aud` to include `billing-api`. A passthrough token

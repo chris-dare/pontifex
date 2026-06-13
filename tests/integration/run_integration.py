@@ -1,4 +1,4 @@
-"""End-to-end test for token-exchange connectors against a real Keycloak.
+"""Integration test for token-exchange connectors against a real Keycloak.
 
 Runs inside the compose network so issuer URLs are consistent. Flow:
   1. ROPC (no browser) to mint a user's access token from Keycloak.

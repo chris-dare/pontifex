@@ -1,8 +1,9 @@
-name: E2E (token exchange)
+name: Integration (token exchange)
 
-# Full RFC 8693 token-exchange e2e against a real Keycloak (see tests/e2e/).
-# Opt-in: runs on manual dispatch and on PRs that touch the connector/auth code
-# or the e2e stack — not on every PR (Keycloak boot makes it a slow job).
+# RFC 8693 token-exchange integration test against a real Keycloak (see
+# tests/integration/). Opt-in: runs on manual dispatch and on PRs that touch the
+# connector/auth code or the integration stack — not on every PR (Keycloak boot
+# makes it a slow job).
 
 on:
   workflow_dispatch: {}
@@ -11,31 +12,31 @@ on:
       - "core/pontifex_mcp/connectors/**"
       - "core/pontifex_mcp/auth/**"
       - "core/pontifex_mcp/middleware/**"
-      - "tests/e2e/**"
+      - "tests/integration/**"
 
 permissions:
   contents: read
 
 jobs:
-  token-exchange-e2e:
+  token-exchange-integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
       - name: Bring up the stack
-        working-directory: tests/e2e
+        working-directory: tests/integration
         run: docker compose up -d --build
 
-      - name: Run e2e checks
-        working-directory: tests/e2e
+      - name: Run integration checks
+        working-directory: tests/integration
         run: docker compose run --rm test
 
       - name: Dump logs on failure
         if: failure()
-        working-directory: tests/e2e
+        working-directory: tests/integration
         run: docker compose logs --no-color
 
       - name: Tear down
         if: always()
-        working-directory: tests/e2e
+        working-directory: tests/integration
         run: docker compose down -v

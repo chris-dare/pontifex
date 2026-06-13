@@ -128,7 +128,22 @@ doesn't require a restart.
 
 The caller's token is **never forwarded as-is** (no passthrough — a token minted for Pontifex's
 audience wouldn't be accepted downstream, and forwarding it would break the trust chain). Exchanged
-tokens are cached in process memory only, keyed per user and audience, for their lifetime.
+tokens are cached, keyed per user and audience, for their lifetime.
+
+#### Token cache backend
+
+Exchanged tokens are cached so a user's repeated calls don't re-hit the IdP. The backend is a
+deployment-level setting:
+
+- `PONTIFEX_TOKEN_CACHE=memory` *(default)* — in-process only; tokens never leave the process or hit
+  disk. Each worker caches independently.
+- `PONTIFEX_TOKEN_CACHE=redis` — shared across workers via Redis (reuses `REDIS_URL`). Tokens are
+  **encrypted at rest** with a Fernet key from `PONTIFEX_TOKEN_CACHE_KEY` (generate with
+  `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`), so a
+  Redis dump yields only ciphertext — the key lives in the environment, not in Redis. Missing
+  `REDIS_URL` or `PONTIFEX_TOKEN_CACHE_KEY` fails at startup.
+
+Using a managed KMS instead of an env-held key is tracked in #52.
 
 The request is plain [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693), so any compliant provider
 works — Keycloak, Auth0, Microsoft Entra (on-behalf-of), Okta. Two things differ per provider:

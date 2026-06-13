@@ -29,8 +29,10 @@ def _jwt_with_aud(aud) -> str:
 def _make(monkeypatch, *, clock=None, breaker=None, cache=None) -> TokenExchange:
     monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_ID", "pontifex-client")
     monkeypatch.setenv("PONTIFEX_OAUTH_CLIENT_SECRET", "shhh")
-    if cache is None and clock is not None:
-        cache = InMemoryTokenCache(clock=clock)
+    # Always inject an in-memory cache so the test never falls through to
+    # default_token_cache() (which reads PONTIFEX_TOKEN_CACHE from the shell).
+    if cache is None:
+        cache = InMemoryTokenCache(clock=clock) if clock is not None else InMemoryTokenCache()
     return TokenExchange(
         token_endpoint=IDP,
         audience=AUDIENCE,

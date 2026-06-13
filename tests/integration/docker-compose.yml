@@ -89,6 +89,9 @@ services:
       PONTIFEX_CONNECTORS_CONFIG: tests/integration/connectors.yaml
       PONTIFEX_OAUTH_CLIENT_ID: pontifex
       PONTIFEX_OAUTH_CLIENT_SECRET: pontifex-secret
+      # Exercise the shared Redis token cache with encryption-at-rest (#47).
+      PONTIFEX_TOKEN_CACHE: redis
+      PONTIFEX_TOKEN_CACHE_KEY: 42EKL1aTrCJtrhOEJpULzoFrQNYNfcaVMaaivInzMLA= # gitleaks:allow (test-only)
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,6 +121,7 @@ services:
       PONTIFEX_URL: http://pontifex:8080
       DOWNSTREAM_URL: http://downstream:8000
       PG_DSN: postgresql://pontifex:pontifex@postgres:5432/pontifex
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       pontifex:
         condition: service_healthy

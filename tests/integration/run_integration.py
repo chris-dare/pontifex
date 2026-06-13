@@ -96,6 +96,27 @@ def tool_body(result) -> dict:
     return json.loads(result.content[0].text)
 
 
+async def redis_token_is_encrypted() -> tuple[bool, str]:
+    """Inspect the shared Redis token cache: the stored value must be Fernet
+    ciphertext (starts with 'gAAAAA'), never a plaintext JWT ('ey...')."""
+    import redis.asyncio as redis_asyncio
+
+    client = redis_asyncio.from_url(os.environ["REDIS_URL"])
+    try:
+        keys = [k async for k in client.scan_iter(match="pontifex:tokx:*")]
+        if not keys:
+            return False, "no token-cache keys found in Redis"
+        raw = await client.get(keys[0])
+        text = raw.decode("latin-1")
+        if text.startswith("ey"):
+            return False, "token stored as plaintext JWT"
+        if not text.startswith("gAAAAA"):
+            return False, f"unexpected value prefix: {text[:10]!r}"
+        return True, f"{len(keys)} key(s), Fernet ciphertext"
+    finally:
+        await client.aclose()
+
+
 async def latest_audit_delegation(tool_name: str) -> str | None:
     """Read delegated_audience from the most recent audit row for a tool —
     proves the delegation is queryable in the real audit table, not just logged."""
@@ -157,6 +178,10 @@ async def main() -> None:
         audience == "billing-api",
         f"delegated_audience={audience!r}",
     )
+
+    # The shared Redis token cache stores the exchanged token encrypted (#47).
+    encrypted, detail = await redis_token_is_encrypted()
+    check("redis token cache is encrypted at rest", encrypted, detail)
 
     # No credential to Pontifex → AuthMiddleware rejects before MCP.
     status = pontifex_no_auth_status()

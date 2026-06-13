@@ -36,7 +36,15 @@ from pontifex_mcp.connectors.config import (
     register_connectors_from_config,
 )
 from pontifex_mcp.connectors.register import register_openapi_tools
-from pontifex_mcp.connectors.token_exchange import TokenExchange, TokenExchangeRejected
+from pontifex_mcp.connectors.token_exchange import (
+    FernetEncryptor,
+    InMemoryTokenCache,
+    RedisTokenCache,
+    TokenCache,
+    TokenExchange,
+    TokenExchangeRejected,
+    default_token_cache,
+)
 
 __all__ = [
     "AuthContext",
@@ -44,11 +52,16 @@ __all__ = [
     "BearerFromEnv",
     "ConnectorUnavailable",
     "ConnectorsConfig",
+    "FernetEncryptor",
     "HeaderFromEnv",
+    "InMemoryTokenCache",
     "OpenAPIAdapter",
+    "RedisTokenCache",
+    "TokenCache",
     "TokenExchange",
     "TokenExchangeRejected",
     "UpstreamAuthUnavailable",
+    "default_token_cache",
     "load_connectors_config",
     "register_connectors_from_config",
     "register_openapi_tools",

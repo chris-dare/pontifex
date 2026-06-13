@@ -75,6 +75,37 @@ async def test_redis_cache_stores_ciphertext_and_decrypts_on_read():
     assert calls["n"] == 1
 
 
+async def test_redis_cache_reexchanges_on_decrypt_failure():
+    # A value encrypted under a different (rotated) key can't be decrypted —
+    # the cache must treat it as a miss and re-mint, not raise.
+    redis = _FakeRedis()
+    old_key = FernetEncryptor(Fernet.generate_key().decode())
+    redis.store["pontifex:tokx:k1"] = old_key.encrypt(b"stale-token")
+
+    cache = _cache(redis)  # a fresh, different key
+    calls = {"n": 0}
+
+    async def loader():
+        calls["n"] += 1
+        return "fresh-token", 300
+
+    result = await cache.get_or_load("k1", loader)
+    assert result.reveal() == "fresh-token"
+    assert calls["n"] == 1  # re-minted rather than failing the call
+
+
+async def test_redis_cache_skips_caching_nonpositive_ttl():
+    redis = _FakeRedis()
+    cache = _cache(redis)
+
+    async def loader():
+        return "tok", 0  # non-positive TTL must not crash SETEX
+
+    result = await cache.get_or_load("k", loader)
+    assert result.reveal() == "tok"
+    assert "pontifex:tokx:k" not in redis.store  # not cached
+
+
 async def test_redis_cache_single_flight_per_process():
     import asyncio
 

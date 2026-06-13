@@ -29,7 +29,7 @@ from typing import Any, Protocol
 import httpx
 import redis.asyncio as redis_asyncio
 import structlog
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from pontifex_mcp.connectors.adapter import UpstreamAuthUnavailable
 from pontifex_mcp.connectors.auth import AuthContext, _require_env
@@ -216,7 +216,13 @@ class RedisTokenCache:
         rkey = self._prefix + key
         cached = await self._redis.get(rkey)
         if cached is not None:
-            return _Secret(self._enc.decrypt(cached).decode())
+            try:
+                return _Secret(self._enc.decrypt(cached).decode())
+            except InvalidToken:
+                # Key rotated or value corrupt — treat as a miss and re-mint,
+                # rather than failing the call (and tripping the connector
+                # breaker) until the entry's TTL expires. Self-heals on rotation.
+                pass
 
         inflight = self._inflight.get(key)
         if inflight is None:
@@ -229,7 +235,11 @@ class RedisTokenCache:
     ) -> _Secret:
         try:
             value, ttl_seconds = await loader()
-            await self._redis.setex(rkey, ttl_seconds, self._enc.encrypt(value.encode()))
+            # SETEX rejects a non-positive TTL; the shipped loader guarantees
+            # ttl >= 1, but this is a reusable seam — skip caching rather than
+            # crash if a loader returns a non-positive TTL.
+            if ttl_seconds > 0:
+                await self._redis.setex(rkey, ttl_seconds, self._enc.encrypt(value.encode()))
             return _Secret(value)
         finally:
             self._inflight.pop(key, None)

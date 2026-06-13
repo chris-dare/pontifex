@@ -12,7 +12,7 @@ from pontifex_mcp.auth.context import (
     set_stdio_subject_token,
 )
 from pontifex_mcp.auth.identity import CallerIdentity
-from pontifex_mcp.connectors import TokenExchange, register_openapi_tools
+from pontifex_mcp.connectors import InMemoryTokenCache, TokenExchange, register_openapi_tools
 from pontifex_mcp.connectors.config import ConnectorAuth
 from pydantic import ValidationError
 
@@ -78,6 +78,7 @@ def _build(monkeypatch) -> tuple[FastMCP, _RecordingAudit]:
             audience=BASE_URL,
             client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
             client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+            cache=InMemoryTokenCache(),
         ),
     )
     return mcp, audit
@@ -202,6 +203,7 @@ def _build_with_manager(monkeypatch):
             audience=BASE_URL,
             client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
             client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+            cache=InMemoryTokenCache(),
         ),
         cb_failure_threshold=1,
     )

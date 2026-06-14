@@ -1,6 +1,6 @@
 # Pontifex MCP
 
-Enterprise-grade capabilities for MCP servers, built on the official
+The security and governance layer for MCP servers, built on the official
 [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
@@ -25,9 +25,8 @@ turns your existing APIs, data stores, and internal services into **governed too
 call**. That's how you get an AI initiative out of pilot and into the parts of the business that matter,
 without handing your data to a third party.
 
-*Governed* is the heart of it — and it's a **growing** set of capabilities, not a fixed list. Today the
-layer gives every tool call authentication, per-caller scopes, rate limits, observability, and a full
-audit trail.
+*Governed* is the heart of it: every tool call gets authentication, per-caller scopes, rate limits,
+observability, and a full audit trail.
 
 It builds **on** the official MCP Python SDK and stays on **open protocols throughout** — so you run it
 on the infrastructure you already use, pair it with any AI vendor, and can strip it out whenever you
@@ -50,9 +49,7 @@ flowchart TB
     adapters --> systems["Your systems<br/>APIs, databases, services"]
 ```
 
-## What it does today
-
-The capabilities below are live now — the foundation the rest is built on.
+## Capabilities
 
 <div class="grid cards" markdown>
 

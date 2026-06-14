@@ -66,11 +66,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
-## Project: MCP Platform
+## Project: pontifex-mcp
 
-Multi-domain MCP server platform. Core library + pluggable domain modules. First domain: Ghana Stock Exchange (GSE).
+`pontifex-mcp` (the library in `core/`) is the product: a Python package for building enterprise-grade MCP servers — auth, scopes, audit, resilience, observability — on top of the official MCP Python SDK. Published to PyPI as [`pontifex-mcp`](https://pypi.org/project/pontifex-mcp/).
 
-Full architecture: see `MCP_PLATFORM_SOLUTION_DESIGN_v2.md`
+The GSE (Ghana Stock Exchange) module under `domains/gse/` is a **worked example** that demonstrates the library — not a shipping product. "Pontifex" the managed service does not exist yet; today the repo is the open-source library plus its demo domain.
+
+Full architecture: see `SOLUTION_DESIGN.md`
 
 ### Stack
 
@@ -91,7 +93,8 @@ Full architecture: see `MCP_PLATFORM_SOLUTION_DESIGN_v2.md`
 ### Commands
 
 - Install: `uv sync`
-- Dev server: `uv run uvicorn gse_mcp.main:app --reload --port 8080`
+- Build the package: `uv build --package pontifex-mcp`
+- Dev server (GSE demo): `uv run uvicorn gse_mcp.main:app --reload --port 8080`
 - Test: `uv run pytest`
 - Test single: `uv run pytest tests/domains/gse/test_tools.py -k test_live_prices`
 - Lint: `uv run ruff check .`
@@ -99,16 +102,16 @@ Full architecture: see `MCP_PLATFORM_SOLUTION_DESIGN_v2.md`
 - Type check: `uv run ty check`
 - Migration create: `uv run alembic revision --autogenerate -m "description"`
 - Migration run: `uv run alembic upgrade head`
-- Deploy: `fly deploy --app mcp-gse`
+- Deploy (GSE demo): `fly deploy --app mcp-gse`
 
 ### Repo Structure
 
 ```
-mcp-platform/
+pontifex/
 ├── pyproject.toml     # Virtual workspace root (uv workspace)
 ├── uv.lock            # Single lockfile, committed
-├── core/pontifex_mcp/     # Shared library — auth, cache, audit, circuit breaker
-├── domains/gse/gse_mcp/  # GSE domain module — tools, adapters, models
+├── core/pontifex_mcp/     # The pontifex-mcp library (published to PyPI) — auth, cache, audit, circuit breaker
+├── domains/gse/gse_mcp/  # GSE demo domain — tools, adapters, models
 ├── alembic/           # Migrations: alembic/core/ + alembic/domains/gse/
 ├── tests/             # tests/core/ + tests/domains/gse/
 ├── deploy/            # Dockerfiles, fly.toml
@@ -121,7 +124,7 @@ mcp-platform/
 - **Adapter pattern:** All external API calls go through adapters implementing the `DataAdapter` protocol. Never call an external API directly from a tool handler.
 - **Adding a domain:** New domain = new folder under `domains/`. Core requires zero changes.
 - **Schema isolation:** Each domain gets its own Postgres schema. Domain services cannot touch other domains' tables.
-- **Scope format:** Permission scopes use `domain:resource:action` (e.g. `gse:live_prices:read`). See Section 11 of the solution design.
+- **Scope format:** Permission scopes use `domain:resource:action` (e.g. `gse:live_prices:read`). See `SOLUTION_DESIGN.md`.
 
 ### Conventions
 

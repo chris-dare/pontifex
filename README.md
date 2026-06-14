@@ -1,6 +1,6 @@
 # Pontifex MCP
 
-Enterprise-grade capabilities for MCP servers, built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+The security and governance layer for MCP servers, built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
 This is the home of **[pontifex-mcp](https://pypi.org/project/pontifex-mcp/)** — a Python library for building [MCP](https://modelcontextprotocol.io) servers that connect AI agents to real systems **without giving up control over who can call what**. You write the tools; it handles authentication, per-caller scopes, rate limits, and a full audit trail.
 

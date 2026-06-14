@@ -2,7 +2,7 @@
 site_name = "Pontifex MCP"
 site_description = "Enterprise-grade capabilities for MCP servers, built on the official MCP Python SDK."
 site_author = "Chris Dare"
-site_url = "https://chris-dare.github.io/pontifex/"
+site_url = "https://engineering.chrisdare.me/"
 copyright = """Part of <a href="https://argonauts.chrisdare.me">Argonauts</a>"""
 
 nav = [

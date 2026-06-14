@@ -75,6 +75,28 @@ call to **`create_mcp_http_app`**.
 
     The MCP endpoint is served at `/mcp`, with health checks at `/health/live` and `/health/ready`.
 
+## Already have an OpenAPI spec?
+
+Skip the hand-written tools. Point a connectors config at the spec and the server generates one
+governed tool per allowlisted operation at startup — same scope check and audit as above, no domain
+code:
+
+```yaml
+# connectors.yaml — then set PONTIFEX_CONNECTORS_CONFIG=connectors.yaml
+connectors:
+  - domain: orders
+    spec: https://api.internal/openapi.json
+    base_url: https://api.internal
+    auth:
+      type: bearer_env        # or token_exchange for per-user downstream auth
+      env_var: ORDERS_API_TOKEN
+    include:
+      - GET /orders
+      - GET /orders/{order_id}
+```
+
+See the [Connectors guide](connectors.md) for token exchange, the cache, and the full reference.
+
 ## Issue an API key
 
 Tools require authentication. For scripts and CI, mint an `sk_…` API key scoped to what the caller may

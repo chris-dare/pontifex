@@ -68,5 +68,4 @@ Pontifex secures the *MCP layer*. You still own the perimeter around it:
 !!! note "Verifiable, not just asserted"
 
     Every claim here maps to code you can read in `pontifex_mcp` — the JWT validation, the pre-call
-    scope check, the audit write. It's `0.x` and building in public, so the security model is open to
-    inspection rather than taken on trust.
+    scope check, the audit write. The security model is open to inspection, not taken on trust.

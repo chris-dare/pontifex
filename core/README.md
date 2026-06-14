@@ -21,8 +21,7 @@ authentication, per-caller scopes, rate limits, and a full audit trail.
 - **Built on the MCP SDK** — keep its tools, protocol, and transports; add the controls a production
   server needs.
 
-*Security is deliberate: asymmetric-only JWT validation, generic auth errors, and no token claim can
-escalate a caller — all verifiable in the source.*
+Asymmetric-only JWT validation, generic auth errors, and no token claim can escalate a caller.
 
 ## Install
 

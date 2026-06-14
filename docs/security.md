@@ -64,8 +64,3 @@ Pontifex secures the *MCP layer*. You still own the perimeter around it:
 - Configure your OIDC provider (issuer, audience, the scopes claim, role mappings).
 - Secure and rotate the credentials in your environment.
 - Scope API keys to the minimum each caller needs.
-
-!!! note "Verifiable, not just asserted"
-
-    Every claim here maps to code you can read in `pontifex_mcp` — the JWT validation, the pre-call
-    scope check, the audit write. The security model is open to inspection, not taken on trust.

@@ -46,7 +46,7 @@ jobs:
       # at engineering.chrisdare.me (and isn't reset on redeploy).
       - name: Set custom domain (CNAME)
         if: github.event_name != 'pull_request'
-        run: echo 'engineering.chrisdare.me' > site/CNAME
+        run: echo 'pontifex.chrisdare.me' > site/CNAME
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

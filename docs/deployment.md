@@ -28,6 +28,12 @@ on your `CoreSettings` subclass read with your domain's own `env_prefix`.
     from the listed OpenAPI specs at startup — onboarding a system with config alone. Connector health
     appears in `/health/ready`.
 
+`PONTIFEX_TOKEN_CACHE` / `PONTIFEX_TOKEN_CACHE_KEY`
+:   Backend for the [token-exchange](connectors.md#user-identity-oauth-token-exchange) cache:
+    `memory` (default, in-process) or `redis` (shared, reuses `REDIS_URL`). `redis` requires
+    `PONTIFEX_TOKEN_CACHE_KEY` — a Fernet key (`Fernet.generate_key()`) that encrypts tokens at rest;
+    it's held here in the environment, never in Redis.
+
 ## Infrastructure
 
 1.  **Postgres** — provision a Postgres 16 database and run your migrations. The library's API-key and

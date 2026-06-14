@@ -27,7 +27,7 @@ without handing your data to a third party.
 
 *Governed* is the heart of it — and it's a **growing** set of capabilities, not a fixed list. Today the
 layer gives every tool call authentication, per-caller scopes, rate limits, observability, and a full
-audit trail. More is on the way: this is `0.x`, early, and building in public.
+audit trail.
 
 It builds **on** the official MCP Python SDK and stays on **open protocols throughout** — so you run it
 on the infrastructure you already use, pair it with any AI vendor, and can strip it out whenever you
@@ -103,8 +103,4 @@ simpler.
 
 </div>
 
-!!! note "Status"
-
-    `pontifex-mcp` is `0.x` — building in public. The security model is solid; the public API is still
-    settling, so expect occasional breaking changes before `1.0`. MIT licensed; part of
-    [Argonauts](https://argonauts.chrisdare.me).
+MIT licensed. Part of [Argonauts](https://argonauts.chrisdare.me).

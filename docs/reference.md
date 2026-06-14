@@ -44,8 +44,17 @@ from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAd
     adapter so you can fold it into your health checks. See [Connectors](connectors.md).
 
 `BearerFromEnv(env_var)` / `HeaderFromEnv(header, env_var)`
-:   How the generated adapter authenticates to the downstream API: a bearer token or a static header,
-    with the secret read from the environment per request (presence is checked at startup).
+:   Service-credential auth for the generated adapter: a bearer token or static header, read from the
+    environment per request (presence checked at startup). One identity for all callers.
+
+`TokenExchange(*, token_endpoint, audience, client_id_env, client_secret_env, client_auth='post', default_ttl_seconds=None, ...)`
+:   Per-user downstream auth via OAuth token exchange ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693)).
+    Exchanges the caller's token for one scoped to `audience`, on their behalf — no passthrough. The
+    inbound token is captured by the auth middleware; API-key callers (no token to exchange) are
+    rejected. See [Connectors](connectors.md#user-identity-oauth-token-exchange).
+
+Exchanged tokens are cached behind the `TokenCache` seam, chosen by `PONTIFEX_TOKEN_CACHE`
+(`memory`, default; or `redis`, encrypted at rest with `PONTIFEX_TOKEN_CACHE_KEY`).
 
 ## Identity & scopes
 

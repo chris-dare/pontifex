@@ -16,14 +16,13 @@ authentication, per-caller scopes, rate limits, and a full audit trail.
 - **Standards-based** — RFC 9728 discovery + `WWW-Authenticate`; MCP clients bootstrap auth on their own.
 - **Resilient** — per-caller rate limiting, adapter failover, circuit breaking.
 - **Observable** — Logfire / OpenTelemetry tracing and metrics wired in.
+- **Drop-in connectors** — generate governed tools from an OpenAPI spec (code or config), with optional
+  per-user OAuth token exchange (RFC 8693) to the downstream.
 - **Built on the MCP SDK** — keep its tools, protocol, and transports; add the controls a production
   server needs.
 
 *Security is deliberate: asymmetric-only JWT validation, generic auth errors, and no token claim can
 escalate a caller — all verifiable in the source.*
-
-> **Status:** `0.x`, building in public. The security model is solid; the public API (everything
-> exported from `pontifex_mcp`) is still settling — expect occasional breaking changes before `1.0`.
 
 ## Install
 
@@ -91,6 +90,48 @@ PUBLIC_BASE_URL                  # canonical URL advertised in OAuth discovery
 ```
 
 Domain-specific settings on your subclass read with your domain's `env_prefix`.
+
+## Connect an existing API (no hand-written tools)
+
+If the system already has an OpenAPI spec, generate governed tools from it — each one wrapped in the
+same `tool_runtime` (scope check, audit, error envelope). Operations are opt-in via an explicit
+`include` allowlist.
+
+```python
+from pontifex_mcp import register_openapi_tools, BearerFromEnv
+
+register_openapi_tools(
+    mcp,
+    spec="https://api.internal/openapi.json",   # URL, path, or dict; JSON or YAML
+    domain="orders",
+    base_url="https://api.internal",
+    audit=audit,
+    auth=BearerFromEnv("ORDERS_API_TOKEN"),     # service credential to the backend
+    include=["GET /orders", "GET /orders/{id}"],
+)
+```
+
+Or onboard with **config alone** — point `PONTIFEX_CONNECTORS_CONFIG` at a connectors YAML file and the
+server registers the tools at startup, no domain code.
+
+For a backend that enforces its **own per-user permissions**, swap the service credential for OAuth
+token exchange ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693)) — Pontifex exchanges the caller's
+token for one scoped to the downstream, on their behalf (the inbound token is never forwarded):
+
+```python
+from pontifex_mcp import TokenExchange
+
+auth = TokenExchange(
+    token_endpoint="https://idp.example.com/oauth/token",
+    audience="https://api.internal",
+    client_id_env="PONTIFEX_OAUTH_CLIENT_ID",
+    client_secret_env="PONTIFEX_OAUTH_CLIENT_SECRET",
+)
+```
+
+Exchanged tokens are cached in process memory by default, or in Redis (`PONTIFEX_TOKEN_CACHE=redis`,
+encrypted at rest). See the [Connectors guide](https://chris-dare.github.io/pontifex/connectors/) for
+the full configuration.
 
 ## Who it's for
 

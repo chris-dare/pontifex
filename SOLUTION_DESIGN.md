@@ -1,25 +1,25 @@
-# MCP Platform — Solution Design v2
+# pontifex-mcp — Solution Design
 
 ## 1. Overview
 
-A modular MCP (Model Context Protocol) platform that exposes structured data domains (stock exchanges, fixed income markets, logistics, government services) to AI agents via MCP. Each domain is a self-contained module that plugs into a shared core. The core handles everything domain-agnostic: transport, API key authentication, scope-based permissions, caching, audit logging, circuit breaking, and observability.
+**`pontifex-mcp`** is a Python library for building enterprise-grade MCP (Model Context Protocol) servers — servers that expose your systems to AI agents without giving up control over who can call what. The library (`core/pontifex_mcp`, published to PyPI) is the product. It handles everything domain-agnostic: transport, authentication (API keys + OAuth 2.1 JWTs), scope-based permissions, caching, audit logging, circuit breaking, and observability. You write the tools; it governs every call.
 
-Users or upstream platforms issue API keys with fine-grained permission scopes (e.g. `gse:*:*`, `gse:live_prices:read`). The MCP platform enforces those scopes — it does not manage users, billing, or plan tiers. That responsibility belongs to whatever platform sits above it (a SaaS dashboard, an enterprise admin panel, or even a config file for self-hosted deployments).
+You expose a system by writing a **domain module** — a self-contained set of tools and data adapters that plugs into the shared core. This repo ships one as a worked example: **Ghana Stock Exchange (GSE)** market data. It demonstrates the library against a real data source; it is a demo, not the product.
 
-The first domain module is **Ghana Stock Exchange (GSE)** market data.
+Callers present API keys (or OAuth 2.1 tokens) carrying fine-grained permission scopes (e.g. `gse:*:*`, `gse:live_prices:read`), and the library enforces them before any tool runs. It does not manage users, billing, or plan tiers — those are provisioned by whatever sits above it (your own admin tool, an enterprise panel, a config file, or, eventually, a managed "Pontifex" service that does not exist yet).
 
 ### 1.1 Scope
 
-**Phase 1 (GSE only):** Single domain module. API key auth with permission scopes. Open to any upstream platform or direct use.
+**Today:** The open-source `pontifex-mcp` library — authentication (API keys + OAuth 2.1), `domain:resource:action` scopes, audit, caching, resilience, observability — plus the GSE domain as a worked example. Usable directly, or behind any system that provisions API keys.
 
-**Phase 2 (multi-domain):** Add additional domain modules as needed. The architecture supports any number of domains — market data, fixed income, logistics, government services — each deployed as an independent container. Examples used throughout this doc (GFI, NGX) are illustrative; real domains are added when there's a data source and a use case.
+**Ahead:** A growing set of governance capabilities (key lifecycle, approval workflows, data masking, audit export, auto-generated connectors) and more example domains as use cases appear. The architecture already supports any number of domains — each a self-contained module deployed independently. Other domains named in this doc (GFI, NGX, logistics) are illustrative only.
 
-**Phase 3 (scale):** Additional domains (non-market verticals), horizontal scaling, cross-domain query support.
+The foundation is solid; the capability set is deliberately focused and expands as use cases appear.
 
 ### 1.2 Constraints
 
 - Python 3.12+ with FastAPI
-- API key auth with scope-based permissions; the platform does not manage users, billing, or plans
+- API key + OAuth 2.1 auth with scope-based permissions; the library does not manage users, billing, or plans
 - All tool invocations must be logged with caller identity, timestamp, parameters, and response latency
 - External APIs may lack SLAs; the system must tolerate unavailability of any single source
 - Each domain module deploys as an independent container for fault isolation
@@ -72,7 +72,7 @@ The first domain module is **Ghana Stock Exchange (GSE)** market data.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The MCP platform is a **tool product**. It authenticates API keys, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the upstream platform's job. The upstream platform provisions API keys (with scopes) by writing to `core.api_keys`. The MCP servers read those keys and enforce the scopes.
+`pontifex-mcp` is a **library**, not a service. A server built with it authenticates callers, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the job of whatever provisions the keys above it. That upstream system writes API key records (with scopes) to `core.api_keys`; the server reads them and enforces the scopes.
 
 ---
 
@@ -81,13 +81,13 @@ The MCP platform is a **tool product**. It authenticates API keys, enforces perm
 Uses [uv workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/) with flat layout — following the convention used by FastAPI, Pydantic, and Pydantic AI.
 
 ```
-mcp-platform/
+pontifex/
 ├── pyproject.toml                          # Virtual workspace root (no [project] table)
 ├── uv.lock                                # Auto-generated, committed to version control
 ├── .python-version                         # e.g. "3.12"
 ├── README.md
 ├── CLAUDE.md
-├── MCP_PLATFORM_SOLUTION_DESIGN_v2.md
+├── SOLUTION_DESIGN.md
 ├── docker-compose.yml                      # Dev: all services + Redis + Postgres
 │
 ├── alembic/                                # DB migrations (split by schema)
@@ -1014,14 +1014,14 @@ All domains share a single Redis instance. Key collision is impossible because o
 
 ### 11.1 Principle
 
-The MCP platform authenticates callers and enforces permission scopes. It does not manage users, billing, or plans. It accepts **two credential types**, and both resolve to the same `CallerIdentity` and flow through the same scope enforcement:
+`pontifex-mcp` authenticates callers and enforces permission scopes. It does not manage users, billing, or plans. It accepts **two credential types**, and both resolve to the same `CallerIdentity` and flow through the same scope enforcement:
 
-1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. The platform is a read-only consumer of `core.api_keys`, which an upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions.
+1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. `pontifex-mcp` is a read-only consumer of `core.api_keys`, which an upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions.
 2. **OAuth 2.1 access tokens, represented as JWTs** (RFC 9068; §11.9–11.13) — bearer tokens minted by an external OIDC provider (Auth0, Microsoft Entra, Clerk, Keycloak, …) for interactive MCP clients (Claude Desktop, Cursor, …) that log the end-user in through a browser. (OAuth itself permits opaque access tokens; this platform validates the JWT profile.)
 
 The middleware picks the path by token shape (§11.10) and emits an identical `CallerIdentity` either way, so scopes (§11.2), enforcement (§11.6), and audit (§12) are the same regardless of how the caller authenticated.
 
-This keeps the platform reusable: embed it in a SaaS product, deploy it inside a bank, run it from a local config file, or front it with any OIDC provider. The auth contract is the same in every case.
+This keeps the library reusable: embed it in a SaaS product, deploy it inside a bank, run it from a local config file, or front it with any OIDC provider. The auth contract is the same in every case.
 
 ### 11.2 Permission Scopes
 
@@ -1195,10 +1195,10 @@ rate_limit_rpm: 9999
 
 ### 11.8 How the Upstream Platform Provisions Keys
 
-The upstream platform (your SaaS, an admin CLI, whatever) writes API key records to `core.api_keys`. This is the only integration point. The MCP platform doesn't care how the upstream decided what scopes to assign — whether that was a billing plan, a manual admin decision, or a config file.
+The upstream platform (your SaaS, an admin CLI, whatever) writes API key records to `core.api_keys`. This is the only integration point. `pontifex-mcp` doesn't care how the upstream decided what scopes to assign — whether that was a billing plan, a manual admin decision, or a config file.
 
 ```python
-# Example: upstream platform creates a key (this code lives OUTSIDE the MCP platform)
+# Example: upstream platform creates a key (this code lives OUTSIDE pontifex-mcp)
 
 import hashlib
 import secrets
@@ -1226,7 +1226,7 @@ print(f"Your API key: {raw_key}")
 
 ### 11.9 OAuth 2.1 Authentication (JWT access tokens)
 
-For interactive MCP clients, the platform validates OAuth 2.1 access tokens in JWT form (RFC 9068) minted by an external OIDC provider. The platform is a pure **resource server**: it never mints tokens, runs no login UI, and stores no client records. It validates the JWT and maps its claims to a `CallerIdentity`.
+For interactive MCP clients, `pontifex-mcp` validates OAuth 2.1 access tokens in JWT form (RFC 9068) minted by an external OIDC provider. It is a pure **resource server**: it never mints tokens, runs no login UI, and stores no client records. It validates the JWT and maps its claims to a `CallerIdentity`.
 
 Validation (`core/pontifex_mcp/auth/jwt_validator.py`):
 
@@ -1279,7 +1279,7 @@ These endpoints are only meaningful when JWT auth is configured; an API-key-only
 
 ### 11.12 Provider-Agnostic Configuration
 
-The platform is not tied to any one IdP. A handful of settings point it at any OIDC-compliant provider; switching providers is a config change, not a code change.
+`pontifex-mcp` is not tied to any one IdP. A handful of settings point it at any OIDC-compliant provider; switching providers is a config change, not a code change.
 
 Domain-specific settings carry the domain's `env_prefix` — `GSESettings` sets `env_prefix="GSE_MCP_"`, so e.g. the upstream data-source URL is read from `GSE_MCP_KWAYISI_BASE_URL`. But **infrastructure-level** settings — the auth/IdP config, the canonical URL, and the shared DB/Redis connections (which provider backs the deployment, where it's hosted, what it connects to) — are not domain concerns, so they read from **bare, unprefixed** env vars via `validation_alias` (`DATABASE_URL`, `REDIS_URL`, `AUTH_*`, `PUBLIC_BASE_URL`). The var names are therefore the same for any MCP app, regardless of its domain prefix:
 
@@ -1299,10 +1299,10 @@ Pre-prod stores these in Doppler; UAT imports `AUTH_*` from Doppler and sets `PU
 How an MCP client obtains a `client_id` is a property of the **authorization server**, not the resource server. The platform stays out of it and works with whatever the deployer's provider allows:
 
 - **Pre-registered client** — the deployer registers one OAuth app and hands clients its `client_id`. Works with any client that accepts a client_id (e.g. Claude Desktop's connector UI). Simplest; requires no platform code.
-- **Dynamic Client Registration (DCR)** — clients self-register for true zero-config. Whether it works depends on the provider: some let DCR clients access custom APIs, others (e.g. Auth0) restrict custom APIs to first-party clients. Bridging a restrictive provider needs a provider-specific registration proxy, which the platform deliberately does **not** bundle — it would couple the otherwise provider-agnostic core to one IdP's admin API.
+- **Dynamic Client Registration (DCR)** — clients self-register for true zero-config. Whether it works depends on the provider: some let DCR clients access custom APIs, others (e.g. Auth0) restrict custom APIs to first-party clients. Bridging a restrictive provider needs a provider-specific registration proxy, which `pontifex-mcp` deliberately does **not** bundle — it would couple the otherwise provider-agnostic core to one IdP's admin API.
 - **Client ID Metadata Documents (CIMD)** — the emerging direction: the `client_id` is itself a URL resolving to the client's metadata, removing registration entirely. Still draft-stage with limited provider support.
 
-Because the resource server only ever validates the resulting JWT, the platform is forward-compatible with all three — the registration mechanism can change without any change to Pontifex.
+Because the resource server only ever validates the resulting JWT, `pontifex-mcp` is forward-compatible with all three — the registration mechanism can change without any change to the library.
 
 ---
 
@@ -1399,7 +1399,7 @@ Error messages should tell the agent what went wrong and what to do about it. Th
 - Bad: `"Rate limit exceeded"`
 - Good: `"Rate limit exceeded (60 requests/minute). Retry after 23 seconds."`
 - Bad: `"Service unavailable"`
-- Good: `"All GSE data sources are currently unavailable. The platform is using cached data where possible. Retry in 30 seconds."`
+- Good: `"All GSE data sources are currently unavailable. The server is using cached data where possible. Retry in 30 seconds."`
 
 ### 13.2 Rate Limiting
 
@@ -1459,14 +1459,14 @@ mcp_platform (database)
     └── ...                              following the same pattern
 ```
 
-Note: there are no `users`, `tenants`, or `plans` tables. User management and billing belong to the upstream platform. The MCP platform only stores the data it needs to authenticate and authorise requests: API keys with their scopes.
+Note: there are no `users`, `tenants`, or `plans` tables. User management and billing belong to the upstream platform. `pontifex-mcp` only stores the data it needs to authenticate and authorise requests: API keys with their scopes.
 
 ### 14.3 Core Schema DDL
 
 ```sql
 CREATE SCHEMA IF NOT EXISTS core;
 
--- api_keys: the only auth table the MCP platform owns
+-- api_keys: the only auth table pontifex-mcp owns
 -- Upstream platform (SaaS, admin CLI, config loader) writes rows here
 CREATE TABLE core.api_keys (
     key_id          TEXT PRIMARY KEY,            -- e.g. 'key_abc123'
@@ -1518,7 +1518,7 @@ CREATE TABLE core.domain_registry (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Optional: persisted circuit breaker state (skip in Phase 1)
+-- Optional: persisted circuit breaker state (skip initially)
 CREATE TABLE core.circuit_breaker_state (
     domain          TEXT NOT NULL,
     adapter_name    TEXT NOT NULL,
@@ -1575,7 +1575,7 @@ CREATE TABLE gse.cached_eod_prices (
     PRIMARY KEY (symbol, date)
 );
 
--- Phase 3: log discrepancies when cross-validating across adapters
+-- Later: log discrepancies when cross-validating across adapters
 CREATE TABLE gse.data_quality_log (
     id              BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1592,7 +1592,7 @@ CREATE TABLE gse.data_quality_log (
 
 ### 14.5 Schema Permissions
 
-Two classes of database role for the MCP platform itself. The upstream platform writes to `core.api_keys` using its own credentials (outside this product's scope).
+Two classes of database role for `pontifex-mcp` itself. The upstream platform writes to `core.api_keys` using its own credentials (outside this product's scope).
 
 - **Domain services** (`mcp_gse_service`, etc.): Read `core.api_keys` to resolve keys, write `core.audit_log`, full access to their own domain schema.
 - **Analytics** (`mcp_analytics`): Read-only on everything for dashboards and reporting.
@@ -1679,7 +1679,7 @@ Core migrations run with a shared migration role that has `CREATE SCHEMA` privil
 
 ### 14.7 Connection Pooling
 
-Each domain server maintains its own SQLAlchemy async engine with a connection pool. Recommended pool settings for Phase 1:
+Each domain server maintains its own SQLAlchemy async engine with a connection pool. Recommended pool settings to start:
 
 | Setting | Value | Rationale |
 |---------|-------|-----------|
@@ -1702,7 +1702,7 @@ engine = create_async_engine(
 
 ### 14.8 The circuit_breaker_state Table
 
-**Phase 1: skip it.** The circuit breaker runs in-memory. When a container restarts, the breaker resets to `CLOSED` and rediscovers adapter availability by trying and failing (or succeeding). For a single container per domain, this is fine.
+**Skip it initially.** The circuit breaker runs in-memory. When a container restarts, the breaker resets to `CLOSED` and rediscovers adapter availability by trying and failing (or succeeding). For a single container per domain, this is fine.
 
 **When to add it:** If you scale to multiple container replicas per domain, in-memory breakers diverge — replica A might have kwayisi marked `OPEN` while replica B still thinks it's `CLOSED` and keeps hammering a dead upstream. Persisting state to `core.circuit_breaker_state` (or Redis, which is faster for this) lets all replicas share a single view. Add this when you move to horizontal scaling.
 
@@ -1901,13 +1901,13 @@ primary_region = "lhr"  # London — closest Fly region to West Africa
 
 ```bash
 # Create Postgres (shared across all domain apps)
-fly postgres create --name mcp-platform-db --region lhr
+fly postgres create --name pontifex-mcp-db --region lhr
 
 # Attach to the GSE app
-fly postgres attach mcp-platform-db --app mcp-gse
+fly postgres attach pontifex-mcp-db --app mcp-gse
 
 # Create Redis (Upstash, Fly's managed Redis)
-fly redis create --name mcp-platform-cache --region lhr
+fly redis create --name pontifex-mcp-cache --region lhr
 
 # Set secrets (not in fly.toml — stored encrypted by Fly)
 fly secrets set REDIS_URL="redis://..." --app mcp-gse
@@ -1937,7 +1937,7 @@ For users connecting to the GSE server via Claude Desktop:
         "run", "--rm", "-i",
         "--env", "GSE_MCP_TRANSPORT=stdio",
         "--env", "REDIS_URL=redis://host.docker.internal:6379/0",
-        "mcp-platform-gse:latest"
+        "pontifex-mcp-gse:latest"
       ]
     }
   }
@@ -2102,7 +2102,7 @@ The core library, auth, audit, caching, circuit breaker, observability, and heal
 
 ---
 
-## 21. Phase 3 Additions (Scale)
+## 21. Later Additions
 
 1. **Bloomberg adapter for GSE** — cross-validate prices. Flag discrepancies above 2%.
 2. **Data quality middleware** — compare across adapters before returning. Disagreement above threshold returns a warning flag.
@@ -2119,6 +2119,6 @@ Resolve before implementation:
 
 1. **GSE official feed** — Contact GSE data services (gse.com.gh/data-services) for pricing and endpoint details. Needed for a licensed adapter and for commercial redistribution.
 2. **Data redistribution** — kwayisi's terms are unclear on redistribution. For production use serving data externally, the GSE official feed should be the primary source.
-3. **Upstream integration pattern** — Will upstream platforms write API keys directly to Postgres, or should the MCP platform expose a provisioning API? Direct DB writes are simpler; an API is more portable.
+3. **Upstream integration pattern** — Will upstream platforms write API keys directly to Postgres, or should `pontifex-mcp` expose a provisioning API? Direct DB writes are simpler; an API is more portable.
 4. **Additional domains** — Which domains are likely next after GSE? Non-market verticals (logistics, government APIs) would help validate that the core abstractions generalise beyond market data.
 5. **Upstream data source credentials** — Some future adapters will need to authenticate with their upstream APIs (API keys, OAuth tokens, client certificates). The adapter interface supports this today (pass credentials into the constructor), but there's no platform-level pattern yet for how those secrets are stored, rotated, or scoped. Decide when the first authenticated upstream is added: secrets manager (Vault, AWS Secrets Manager), encrypted env vars, or per-user "bring your own credentials" — each has different implications for the adapter and config layers.

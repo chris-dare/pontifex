@@ -1,36 +1,34 @@
 # Pontifex MCP
 
-The security and governance layer for MCP servers, built on the official
-[MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+**Enterprise-grade MCP servers. Governed by default.**
 
-[Get started](getting-started.md){ .md-button .md-button--primary }
-[Security model](security.md){ .md-button }
+Authentication, least-privilege scopes, and a full audit trail on every tool call —
+built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
-## The problem
+[Get started](learn/quickstart.md){ .md-button .md-button--primary }
+[Why Pontifex](why.md){ .md-button }
 
-AI agents are ready to do real work — answer questions from your data, take actions in your systems.
-[MCP](https://modelcontextprotocol.io) (the **Model Context Protocol**, the open standard agents like
-Claude use to call tools) gives you a *server* that exposes those tools. What it doesn't give you is the
-control that makes a server safe to point at real data: *who* is calling, *what* they're allowed to
-touch, *how often*, and a *record* of what happened.
+## AI agents are ready to do real work
 
-So teams stall in the same place: the AI works in a demo, but nobody will connect it to the orders
-database, the customer records, or the internal APIs — because there's no authentication, no access
-control, and no audit trail.
+Your systems aren't ready to let them.
 
-## What Pontifex MCP does
+Connecting an agent to your orders API or your customer database means letting it call
+production. Nobody signs off on that without answers. *Who's calling? What can they
+touch? How often? And what happened?*
 
-Pontifex MCP is the **connecting layer** between AI agents and the systems your business runs on — it
-turns your existing APIs, data stores, and internal services into **governed tools any AI agent can
-call**. That's how you get an AI initiative out of pilot and into the parts of the business that matter,
-without handing your data to a third party.
+[MCP](https://modelcontextprotocol.io) — the open standard agents like Claude use to
+call tools — gives you the connection. It doesn't give you the control.
 
-*Governed* is the heart of it: every tool call gets authentication, per-caller scopes, rate limits,
-observability, and a full audit trail.
+So the pilot works in a demo. Then it waits for a security review it can't pass.
 
-It builds **on** the official MCP Python SDK and stays on **open protocols throughout** — so you run it
-on the infrastructure you already use, pair it with any AI vendor, and can strip it out whenever you
-like. Your data never leaves your environment.
+## Pontifex closes the gap
+
+It turns your existing APIs, data stores, and internal services into tools any agent
+can call. Every call is **authenticated, scoped to least privilege, rate-limited, and
+audited.**
+
+That's how an AI initiative gets out of pilot and into production — without handing
+your data to a third party.
 
 ```mermaid
 flowchart TB
@@ -49,55 +47,71 @@ flowchart TB
     adapters --> systems["Your systems<br/>APIs, databases, services"]
 ```
 
-## Capabilities
+Built on the official MCP Python SDK. Open protocols throughout — OAuth 2.1, OpenAPI,
+standard JWTs. Run it on the infrastructure you already have. Pair it with any AI
+vendor. Strip it out whenever you like.
+
+Your data never leaves your environment.
+
+## What you get
 
 <div class="grid cards" markdown>
 
--   :material-shield-check:{ .lg .middle } __Secure by default__
+-   :material-shield-check:{ .lg .middle } __Nothing runs unauthenticated__
 
-    OAuth 2.1 JWTs and `sk_…` API keys. Every tool call is authenticated, against any OIDC provider
-    (Auth0, Entra, Clerk, Keycloak).
+    Every call carries a verified identity — an OAuth 2.1 JWT or an `sk_…` API key —
+    checked before a handler runs. Any OIDC provider works.
 
--   :material-key-chain:{ .lg .middle } __Least-privilege scopes__
+-   :material-key-chain:{ .lg .middle } __Least privilege, enforced__
 
-    `domain:resource:action`, checked before every call. Callers can't widen their own access.
+    Scopes are `domain:resource:action`, declared per tool. Callers can't widen their
+    own access. Ever.
 
--   :material-clipboard-text-clock:{ .lg .middle } __Auditable__
+-   :material-clipboard-text-clock:{ .lg .middle } __"Who touched what" — answered__
 
-    Every call recorded: who, what, when, data source, cache hit, latency.
+    Every call recorded: caller, tool, parameters, data source, latency. The trail
+    your auditors ask for.
 
--   :material-lightning-bolt:{ .lg .middle } __Resilient__
+-   :material-lightning-bolt:{ .lg .middle } __Resilient under load__
 
-    Per-caller rate limiting, data-source failover, and circuit breaking.
+    Per-caller rate limiting, source failover, circuit breaking. A flaky upstream
+    won't take you down with it.
 
--   :material-power-plug:{ .lg .middle } __Drop-in connectors__
+-   :material-power-plug:{ .lg .middle } __No code for an existing API__
 
-    Point a config file at an OpenAPI spec and every allowlisted operation becomes a governed tool —
-    no code. [Connectors →](connectors.md)
+    Point a config file at an OpenAPI spec. Every allowlisted operation becomes a
+    governed tool. [Connectors →](learn/connect-an-api.md)
+
+-   :material-server-network:{ .lg .middle } __Yours to run__
+
+    A Python library you self-host. No third party in the path. MIT licensed.
 
 </div>
 
-## Who it's for
-
-Reach for `pontifex-mcp` when you're exposing **internal or proprietary systems** — an orders API, a
-customer database, an analytics warehouse — to AI agents, and unauthenticated tool access isn't an
-option. If you're shipping a single public tool over non-sensitive data, the MCP SDK on its own is
-simpler.
+## Where to next
 
 <div class="grid cards" markdown>
 
--   __Build with it__
+-   __Evaluating it?__
 
-    Stand up your first authenticated server in a few minutes.
+    The case for a governance layer, and when *not* to use one.
 
-    [Quickstart →](getting-started.md)
+    [Why Pontifex →](why.md)
 
--   __Evaluate it__
+-   __Building with it?__
 
-    The security model, architecture, and how it fits your stack.
+    An authenticated, audited server running in minutes.
 
-    [Security →](security.md)
+    [Quickstart →](learn/quickstart.md)
+
+-   __Reviewing the security?__
+
+    The model behind "safe to point at production."
+
+    [Security →](concepts/security.md)
 
 </div>
+
+---
 
 MIT licensed. Part of [Argonauts](https://argonauts.chrisdare.me).

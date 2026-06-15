@@ -59,7 +59,7 @@ class ToolError:
     message: str                     # human- and agent-readable
     status: int                      # HTTP-style status
     retry: bool                      # should the caller retry?
-    retry_after_seconds: int | None  # set on rate_limited / source_unavailable
+    retry_after_seconds: int | None  # set on source_unavailable
     detail: str | None               # optional extra context
 ```
 

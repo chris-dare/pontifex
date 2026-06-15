@@ -94,7 +94,7 @@ Each is importable from `pontifex_mcp` and plugs into an adapter independently.
 ```python
 from pontifex_mcp import async_retry
 
-@async_retry(max_attempts=3)
+@async_retry(attempts=3)
 async def _call_upstream(self, order_id: str) -> dict:
     ...
 ```

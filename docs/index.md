@@ -81,7 +81,7 @@ standard MCP underneath.
 
 -   :material-server-network:{ .lg .middle } __Yours to run__
 
-    A Python library you self-host. No third party sits in the request path. MIT
+    A Python library you self-host. No third party sits in the request path. Apache-2.0
     licensed.
 
 </div>
@@ -112,4 +112,4 @@ standard MCP underneath.
 
 ---
 
-MIT licensed. Part of [Argonauts](https://argonauts.chrisdare.me).
+Apache-2.0 licensed. Part of [Argonauts](https://argonauts.chrisdare.me).

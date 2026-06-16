@@ -28,7 +28,6 @@ and a compare link to the previous tag. That's the changelog. There's no separat
 
 ## License
 
-MIT. Use it, fork it, embed it in a commercial product. The only requirement is the
-license notice.
+Apache-2.0. Use it, fork it, embed it in a commercial product. See the LICENSE file for the full terms.
 
 Pontifex is part of [Argonauts](https://argonauts.chrisdare.me).

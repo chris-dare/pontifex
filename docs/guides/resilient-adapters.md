@@ -1,10 +1,10 @@
 # Build a resilient adapter
 
-A tool should never call an external system directly. It should call through a
-**`DataAdapter`** — so the I/O is testable, swappable, and protected by failover,
+A tool should never call an external system directly. It calls through a
+**`DataAdapter`**, which makes the I/O testable, swappable, and protected by failover,
 caching, and circuit breaking.
 
-This guide builds one by hand. (Connectors generate adapters for you; this is for the
+This guide builds one by hand. (Connectors generate adapters for you; this covers the
 systems you wire yourself.)
 
 ## The protocol
@@ -25,8 +25,8 @@ class OrdersAdapter(Protocol):
     async def get_order(self, order_id: str) -> dict: ...   # your method
 ```
 
-Write two implementations — say, a primary API and a fallback datastore — and the
-manager will prefer the primary and fall back when it's down.
+Write two implementations, say a primary API and a fallback datastore. The manager
+prefers the primary and falls back when it's down.
 
 ## Let the manager order them
 
@@ -71,7 +71,7 @@ async def get_order(order_id: str) -> dict:
     raise RuntimeError("All order sources unavailable")
 ```
 
-When every source is down, raise — and map that exception to a clean response with
+When every source is down, raise, then map that exception to a clean response with
 `tool_runtime`'s `source_unavailable_exception` so the caller gets a retryable
 `source_unavailable` (503), not a 500.
 
@@ -80,15 +80,16 @@ When every source is down, raise — and map that exception to a clean response 
 Each is importable from `pontifex_mcp` and plugs into an adapter independently.
 
 `Cache`
-:   A namespaced, Redis-backed cache. **You** decide the TTL per write — the cache has
-    no idea what your data is. Absorbs most traffic so a slow upstream is rarely hit.
+:   A namespaced, Redis-backed cache. **You** decide the TTL per write; the cache has
+    no idea what your data is. It absorbs most traffic, so requests reach a slow upstream
+    rarely.
 
 `CircuitBreaker`
-:   Trips after repeated failures, then recovers automatically. The manager gives each
+:   Trips after repeated failures, then recovers on its own. The manager gives each
     adapter one; you can also use it directly around any flaky call.
 
 `async_retry`
-:   Decorator that retries a coroutine with exponential backoff and jitter — for
+:   Decorator that retries a coroutine with exponential backoff and jitter, for
     *transient* errors, inside a single adapter, before the breaker counts a failure.
 
 ```python
@@ -108,5 +109,5 @@ reports each adapter's state and breaker status:
 app = create_mcp_http_app("orders", settings, register_tools, manager.health_summary)
 ```
 
-A down upstream shows up in your probes instead of as caller-facing 500s. That's the
-whole goal: contain the failure, don't propagate it.
+A down upstream shows up in your probes instead of as caller-facing 500s. You contain
+the failure where the adapter sits instead of propagating it to the caller.

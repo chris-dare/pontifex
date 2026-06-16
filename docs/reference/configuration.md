@@ -5,7 +5,7 @@ Every setting Pontifex reads from the environment.
 Two kinds of variable:
 
 - **Infrastructure** settings read from **bare, unprefixed** names. They're the same
-  for every server, regardless of domain — auth, the canonical URL, the shared DB and
+  for every server, regardless of domain: auth, the canonical URL, the shared DB and
   Redis connections.
 - **Domain** settings on your `CoreSettings` subclass read with **your domain's
   `env_prefix`** (e.g. `ORDERS_…`).
@@ -27,7 +27,7 @@ is active.
 | `AUTH_JWKS_URL` | Your provider's JWKS endpoint. |
 | `AUTH_ISSUER` | Expected token issuer (`iss`). |
 | `AUTH_AUDIENCE` | The resource-server identifier the token's `aud` must carry. |
-| `AUTH_SCOPES_CLAIM` | The claim that carries scopes — `permissions` (Auth0), `scp` or `roles` (Entra). |
+| `AUTH_SCOPES_CLAIM` | The claim that carries scopes: `permissions` (Auth0), `scp` or `roles` (Entra). |
 | `AUTH_AUTHORIZATION_SERVER` | Advertised in the discovery metadata. |
 | `PUBLIC_BASE_URL` | Canonical URL advertised in OAuth discovery. Set it in production so the value is stable, not derived from request headers. |
 
@@ -48,9 +48,9 @@ For the [token-exchange](../guides/downstream-auth.md#the-exchanged-token-cache)
 
 ## Health endpoints
 
-Not configured — always served.
+Not configured; always served.
 
 | Endpoint | Reports |
 | --- | --- |
-| `/health/live` | Liveness — the process is up. |
-| `/health/ready` | Readiness — database, upstreams, and connectors are reachable. |
+| `/health/live` | Liveness. The process is up. |
+| `/health/ready` | Readiness. Database, upstreams, and connectors are reachable. |

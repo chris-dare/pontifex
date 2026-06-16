@@ -13,7 +13,9 @@ nav = [
     { "Connect an existing API" = "learn/connect-an-api.md" },
   ] },
   { "Guides" = [
+    { "Set up Postgres & Redis" = "guides/database-setup.md" },
     { "Authenticate callers" = "guides/authenticate-callers.md" },
+    { "Set up OAuth, step by step" = "guides/oauth-setup.md" },
     { "Authenticate to your backend" = "guides/downstream-auth.md" },
     { "Build a resilient adapter" = "guides/resilient-adapters.md" },
     { "Deploy to production" = "guides/deploy.md" },

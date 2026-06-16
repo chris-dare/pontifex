@@ -1,10 +1,10 @@
 # Quickstart
 
-A governed MCP server — authenticated and audited — running locally in a few minutes.
+A governed MCP server, authenticated and audited, running locally in a few minutes.
 
 This is a tutorial. Follow it top to bottom and you'll have a working server. For the
-problems you'll solve *after* that — wiring OAuth, onboarding an existing API,
-deploying — see the [Guides](../guides/authenticate-callers.md).
+problems you'll solve after that, wiring OAuth, onboarding an existing API, and
+deploying, see the [Guides](../guides/authenticate-callers.md).
 
 !!! info "Prerequisites"
 
@@ -31,7 +31,7 @@ deploying — see the [Guides](../guides/authenticate-callers.md).
 - your **tools**, each wrapped with `tool_runtime`
 - a call to **`create_mcp_http_app`**
 
-That's it. The runtime handles auth, scope checks, audit, and errors. Let's build one.
+The runtime handles auth, scope checks, audit, and errors. Build one below.
 
 ## Step 1: define your settings
 
@@ -44,8 +44,8 @@ class OrdersSettings(CoreSettings):
     orders_api_base: str = "https://orders.internal.example.com"
 ```
 
-The infrastructure settings — `DATABASE_URL`, `REDIS_URL`, the `AUTH_*` group — are
-inherited. You don't redeclare them.
+You inherit the infrastructure settings: `DATABASE_URL`, `REDIS_URL`, and the `AUTH_*`
+group. You don't redeclare them.
 
 ## Step 2: write a tool
 
@@ -69,13 +69,13 @@ def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
         return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
 ```
 
-The decorator declares the scope this call requires. It writes the audit row. Your
-handler just returns plain data.
+The decorator declares the scope this call requires and writes the audit row. Your
+handler returns plain data.
 
 !!! tip
 
-    No auth code in the handler. No logging code. `tool_runtime` does both, the same
-    way, for every tool. That consistency is the point — see
+    The handler holds no auth code and no logging code. `tool_runtime` does both, the
+    same way, for every tool. For how that consistency plays out, see
     [How a request flows](../concepts/request-path.md).
 
 ## Step 3: create the app
@@ -102,11 +102,11 @@ The MCP endpoint is at `/mcp`. Health checks are at `/health/live` and `/health/
 
 That's a complete server.
 
-Every call to `orders_get_status` is now authenticated, checked for the
-`orders:order:read` scope, and written to the audit log. You wrote none of that.
+Pontifex authenticates every call to `orders_get_status`, checks it for the
+`orders:order:read` scope, and writes it to the audit log. You wrote none of that.
 
-A caller without the scope is rejected before your handler runs. A caller with it gets
-the data — and leaves a row behind saying who they were and what they touched.
+Pontifex rejects a caller without the scope before your handler runs. A caller with it
+gets the data and leaves a row behind saying who they were and what they touched.
 
 ## Recap
 
@@ -119,7 +119,7 @@ You just:
 
 ## Next steps
 
-- **Already have an OpenAPI spec?** Skip hand-written tools entirely —
+- **Already have an OpenAPI spec?** Skip hand-written tools entirely:
   [connect an API](connect-an-api.md).
 - **Let real callers in.** Issue API keys and wire OAuth in
   [Authenticate callers](../guides/authenticate-callers.md).

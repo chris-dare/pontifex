@@ -9,14 +9,14 @@ There are two kinds of caller, and a credential type for each:
   JWT** from your provider.
 
 Both resolve to the same `CallerIdentity` and hit the same scope check. Pick whichever
-fits the caller — or use both.
+fits the caller, or use both.
 
 ## API keys
 
 An API key is an `sk_…` bearer token. The caller sends it as
 `Authorization: Bearer sk_…`.
 
-Pontifex doesn't mint keys — it **reads and enforces** them. An upstream system you
+Pontifex doesn't mint keys. It **reads and enforces** them. An upstream system you
 control (an admin tool, a CLI, a config file) provisions the key with a set of scopes,
 and Pontifex validates each call against them.
 
@@ -42,7 +42,7 @@ print(f"Give this to the caller (shown once): {raw_key}")
 
 !!! tip "Key environments"
 
-    The `sk_<env>_` prefix marks the environment — `sk_live_` in production,
+    The `sk_<env>_` prefix marks the environment: `sk_live_` in production,
     `sk_test_` / `sk_uat_` for CI and ephemeral envs. They all share the `sk_`
     discriminator the middleware routes on, so a test key can never be mistaken for a
     JWT.
@@ -65,6 +65,12 @@ For clients where a *human* logs in, use OAuth. Pontifex is a pure **resource
 server**: it validates the JWT your provider issues and maps its claims to a
 `CallerIdentity`. It never runs a login UI and never mints tokens.
 
+!!! tip "New to OAuth?"
+
+    This section is the reference. For a click-by-click walkthrough that covers creating
+    the API, defining permissions, and filling in the variables (with a copy-paste prompt
+    for a coding agent), follow [Set up OAuth, step by step](oauth-setup.md).
+
 ### Point it at your provider
 
 Set the `AUTH_*` environment variables. That's what turns the JWT path on.
@@ -78,8 +84,8 @@ AUTH_AUTHORIZATION_SERVER=https://your-provider.example/
 PUBLIC_BASE_URL=https://your-deployment.example
 ```
 
-Any OIDC provider works — Auth0, Microsoft Entra, Clerk, Keycloak. Switching providers
-is a config change, not a code change.
+Any OIDC provider works: Auth0, Microsoft Entra, Clerk, Keycloak. To switch providers,
+edit the config; the code stays the same.
 
 ### Clients bootstrap themselves
 
@@ -91,16 +97,16 @@ No out-of-band setup.
 !!! note "Map roles to scopes"
 
     Your provider's roles and permissions need to land in the configured scopes claim
-    as `domain:resource:action` strings. New users can be auto-granted a read-only role
-    if your provider supports a post-login hook.
+    as `domain:resource:action` strings. If your provider supports a post-login hook,
+    use it to grant new users a read-only role.
 
 ## Why both paths are safe
 
 Whichever credential a caller presents, the same rules apply downstream:
 
-- Scopes and rate limits come from **server configuration and verified claims** — never
+- Scopes and rate limits come from **server configuration and verified claims**, never
   from anything the caller can set.
 - JWT validation is **asymmetric-only** and rejects `alg: none`.
-- A rejected credential returns one generic message — no hint about *why* it failed.
+- A rejected credential returns one generic message, with no hint about *why* it failed.
 
 The full model is in [Security](../concepts/security.md).

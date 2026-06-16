@@ -2,58 +2,59 @@
 
 For the person deciding whether to put an AI agent in front of production.
 
-## The gap every AI initiative hits
+## The gap
 
-The model is ready. The systems it needs to act on are not.
+The model is ready. The systems you need it to act on are not.
 
-Your orders API, your customer database, your internal services — they were built for
-your applications and your employees, not for an autonomous agent. Pointing an agent at
-them raises the question every security review asks:
+Your orders API, your customer database, your internal services were built for your
+applications and your employees, not for an autonomous agent. Point an agent at them
+and your security review asks one thing:
 
-> Who is calling, what are they allowed to touch, how often, and what happened?
+> Who is calling, what can they touch, how often, and what did they do?
 
-MCP — the protocol agents use to call tools — answers *none* of that. It standardizes
-the connection. It says nothing about control. So teams build an impressive pilot, and
-then it stalls at the exact moment it has to touch something real.
+MCP, the protocol agents use to call tools, answers none of that. It standardizes the
+connection and leaves the control to you. So your team builds a strong pilot, and it
+stops at the first system that holds real data.
 
-Pontifex is the layer that answers those four questions, so the pilot can ship.
+Pontifex answers those four questions, so you can ship the pilot.
 
 ## What it changes
 
 | Without a governance layer | With Pontifex |
 | --- | --- |
-| An agent's access is all-or-nothing | Each caller is scoped to the exact tools they need |
-| "Trust the agent" | Trust a verified identity on every call |
-| No record of what the agent did | A full audit row per call — caller, tool, data source, latency |
-| One flaky upstream stalls everything | Rate limiting, failover, and circuit breaking contain it |
-| Your data flows through a vendor | Self-hosted; nothing leaves your environment |
+| An agent's access is all-or-nothing | You scope each caller to the exact tools they need |
+| "Trust the agent" | You trust a verified identity on every call |
+| No record of what the agent did | A full audit row per call: caller, tool, data source, latency |
+| One slow upstream stalls everything | Rate limiting, failover, and circuit breaking contain it |
+| Your data flows through a vendor | You self-host; nothing leaves your environment |
 
-The result: "an agent can reach production" stops being a liability and becomes a
-control you can put your name on.
+Now you can put your name on the sentence "an agent can reach production," because you
+control and record every call it makes.
 
 ## Built on open standards
 
-Pontifex doesn't ask you to bet on a platform.
+Pontifex does not ask you to bet on a platform.
 
-- **Built on the official MCP Python SDK.** Not a fork, not a reimplementation.
-- **OAuth 2.1 and standard JWTs** for identity — bring any OIDC provider (Auth0,
-  Entra, Clerk, Keycloak).
-- **OpenAPI** to onboard existing systems without code.
-- **RFC 9728 / RFC 8693** for discovery and token exchange — no proprietary handshake.
+- It builds on the official MCP Python SDK, not a fork or a reimplementation.
+- It uses OAuth 2.1 and standard JWTs for identity, so you bring any OIDC provider
+  (Auth0, Entra, Clerk, Keycloak).
+- It reads OpenAPI to onboard existing systems without code.
+- It speaks RFC 9728 and RFC 8693 for discovery and token exchange, with no proprietary
+  handshake.
 
-Pair it with any AI vendor. Run it anywhere you run Python. And if you ever want it
-gone, it strips out cleanly — your tools are standard MCP underneath.
+Pair it with any AI vendor. Run it anywhere you run Python. To remove it, drop the
+dependency; your tools stay standard MCP underneath.
 
 ## You hold the data
 
-Pontifex is a **library you run**, not a service you send data to.
+Pontifex is a library you run, not a service you send data to.
 
-It sits inside your environment, between the agent and your systems. No third party is
-in the request path. Database, Redis, and provider credentials come from your
-environment. Nothing is hardcoded. Nothing phones home.
+It sits inside your environment, between the agent and your systems. No third party
+sits in the request path. You supply the database, Redis, and provider credentials from
+your own environment. Pontifex hardcodes nothing and phones nothing home.
 
-That's what makes "we're connecting AI to customer data" a sentence your security and
-compliance teams can finish.
+That is what lets your security and compliance teams sign off on "we are connecting AI
+to customer data."
 
 ## Pontifex vs. the MCP SDK alone
 
@@ -70,16 +71,14 @@ server safe to expose.
 | Resilience (failover, breakers) | — | ✅ |
 | Onboard an OpenAPI API with no code | — | ✅ |
 
-## When *not* to use it
+## When to skip it
 
-Be honest about the fit.
+If you are shipping a single public tool over non-sensitive data, use the MCP SDK on
+its own. You do not need identity, scopes, or an audit trail yet, and adding them buys
+you nothing.
 
-If you're shipping a **single public tool over non-sensitive data**, the MCP SDK on its
-own is simpler. You don't need identity, scopes, or an audit trail yet, and adding them
-is overhead without a payoff.
-
-Pontifex earns its place the moment **a real system and a real identity are involved** —
-the point where unauthenticated access stops being acceptable.
+Pontifex pays off once a real system and a real identity are involved, the point where
+you can no longer accept unauthenticated access.
 
 ## Is it for you?
 

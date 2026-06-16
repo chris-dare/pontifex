@@ -1,6 +1,6 @@
 # Python API
 
-Everything below imports directly from `pontifex_mcp`. This is the **supported public
+Everything below imports from `pontifex_mcp`. This is the **supported public
 surface.**
 
 ```python
@@ -18,34 +18,34 @@ Anything reached through a deeper path (`pontifex_mcp.middleware`, `pontifex_mcp
     any ASGI server.
 
 `run_mcp_stdio(domain_name, settings, register_tools, *, instructions='')` → `None`
-:   Blocking runner for the stdio transport — local MCP clients that launch the server
-    as a subprocess. It returns `None`, not a coroutine. Call it directly; don't
+:   Blocking runner for the stdio transport: local MCP clients that launch the server
+    as a subprocess. It returns `None`, not a coroutine. Call it, don't
     `await` it.
 
 ## Configuration
 
 `CoreSettings`
-:   The settings base class (pydantic-settings). Subclass it to add domain fields. The
-    infrastructure settings — `DATABASE_URL`, `REDIS_URL`, the `AUTH_*` group,
-    `PUBLIC_BASE_URL` — are inherited. Every variable: [Configuration](configuration.md).
+:   The settings base class (pydantic-settings). Subclass it to add domain fields. You
+    inherit the infrastructure settings: `DATABASE_URL`, `REDIS_URL`, the `AUTH_*` group,
+    and `PUBLIC_BASE_URL`. Every variable: [Configuration](configuration.md).
 
 ## Tools
 
 `tool_runtime(*, domain, tool_name, resource, action, audit, source_unavailable_exception=None)`
 :   The decorator that wraps a tool handler. Enforces the `domain:resource:action`
     scope and writes the audit row. A successful return value passes through unchanged;
-    a raised error becomes a structured `ToolError`. `source_unavailable_exception`
+    it converts a raised error into a structured `ToolError`. `source_unavailable_exception`
     maps a domain's own "all sources down" exception to a clean unavailable response.
 
 `InvalidInput`
-:   Raise inside a handler to reject bad arguments with a clean, structured error —
-    rather than a 500. See [Errors & scopes](errors-and-scopes.md).
+:   Raise inside a handler to reject bad arguments with a clean, structured error
+    instead of a 500. See [Errors & scopes](errors-and-scopes.md).
 
 ## Connectors
 
 `register_openapi_tools(mcp, *, spec, domain, base_url, audit, include, auth=None, allow_mutations=False, names=None, ...)` → `DataSourceManager`
-:   Generates one governed tool per allowlisted operation in an OpenAPI 3.x spec — each
-    wrapped in `tool_runtime` with a scope derived from the operation. Returns the
+:   Generates one governed tool per allowlisted operation in an OpenAPI 3.x spec. It
+    wraps each in `tool_runtime` with a scope derived from the operation, and returns the
     manager wrapping the generated adapter, so you can fold it into your health checks.
     Guide: [Connect an API](../learn/connect-an-api.md).
 
@@ -57,8 +57,8 @@ Anything reached through a deeper path (`pontifex_mcp.middleware`, `pontifex_mcp
 `TokenExchange(*, token_endpoint, audience, client_id_env, client_secret_env, client_auth='post', default_ttl_seconds=None, ...)`
 :   Per-user downstream auth via OAuth token exchange
     ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693)). Exchanges the caller's token
-    for one scoped to `audience`, on their behalf — no passthrough. API-key callers (no
-    token to exchange) are rejected. Guide:
+    for one scoped to `audience`, on their behalf, with no passthrough. It rejects
+    API-key callers, which have no token to exchange. Guide:
     [Authenticate to your backend](../guides/downstream-auth.md).
 
 Exchanged tokens are cached behind the `TokenCache` seam, chosen by
@@ -73,7 +73,7 @@ Exchanged tokens are cached behind the `TokenCache` seam, chosen by
 
 `scopes_match(scopes, domain, resource, action)` → `bool`
 :   Whether the caller's `scopes` satisfy a required `domain` / `resource` / `action`.
-    Honors wildcard forms — `domain:*:read`, `domain:resource:*`, `domain:*:*`. See
+    Honors wildcard forms: `domain:*:read`, `domain:resource:*`, `domain:*:*`. See
     [Errors & scopes](errors-and-scopes.md#scopes).
 
 ## Data adapters
@@ -122,5 +122,5 @@ Exchanged tokens are cached behind the `TokenCache` seam, chosen by
 :   The success envelope returned to the client.
 
 `ToolError`
-:   The structured error envelope — a stable `error_code` and message, never a stack
+:   The structured error envelope: a stable `error_code` and message, never a stack
     trace. Fields and codes: [Errors & scopes](errors-and-scopes.md).

@@ -143,4 +143,4 @@ Come here when access control and an audit trail start to matter.
 
 ## License
 
-MIT © Chris Dare. Part of [Argonauts](https://argonauts.chrisdare.me).
+Apache-2.0 © Chris Dare. Part of [Argonauts](https://argonauts.chrisdare.me).

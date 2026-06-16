@@ -60,4 +60,4 @@ Lint with `uv run ruff check .`, format with `uv run ruff format .`, type-check 
 
 ## License
 
-MIT © Chris Dare. Part of [Argonauts](https://argonauts.chrisdare.me).
+Apache-2.0 © Chris Dare. Part of [Argonauts](https://argonauts.chrisdare.me).

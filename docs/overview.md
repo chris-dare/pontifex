@@ -6,8 +6,10 @@ Pontifex adds authentication, least-privilege scopes, and a full audit trail to 
 tool call. It builds on the official
 [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
-[Get started](learn/quickstart.md){ .md-button .md-button--primary }
+<div class="px-cta" markdown>
+[Quickstart](learn/quickstart.md){ .md-button .md-button--primary }
 [Why Pontifex](why.md){ .md-button }
+</div>
 
 ## The problem
 

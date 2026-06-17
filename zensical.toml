@@ -5,7 +5,6 @@ site_author = "Chris Dare"
 site_url = "https://pontifex.chrisdare.me/"
 repo_url = "https://github.com/chris-dare/pontifex"
 repo_name = "chris-dare/pontifex"
-copyright = "Apache-2.0 licensed"
 
 nav = [
   { "Home" = "index.md" },

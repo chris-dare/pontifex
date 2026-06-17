@@ -1,7 +1,7 @@
 name: Docs
 
 # Build the Zensical docs and publish to GitHub Pages.
-#   - Pull requests touching docs/ : build only (a validation gate we own).
+#   - Pull requests touching docs/ or overrides/ : build only (a validation gate we own).
 #   - Push to main                 : build + deploy to GitHub Pages.
 #
 # Zensical is a Python tool (the `docs` dependency group), so the whole thing runs
@@ -11,10 +11,10 @@ name: Docs
 
 on:
   pull_request:
-    paths: ["docs/**", "zensical.toml", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "overrides/**", "zensical.toml", ".github/workflows/docs.yml"]
   push:
     branches: [main]
-    paths: ["docs/**", "zensical.toml", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "overrides/**", "zensical.toml", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 permissions:

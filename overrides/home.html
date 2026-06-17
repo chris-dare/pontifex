@@ -1,0 +1,223 @@
+{% extends "main.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap">
+  <style>
+    /* The landing page stands on its own: hide the docs content area and footer. */
+    .md-main .md-content { display: none; }
+    .md-footer { display: none; }
+
+    /* Transparent header overlaid on the full-bleed art (home only) */
+    .md-header {
+      position: fixed;
+      background: transparent;
+      box-shadow: none;
+      color: #f1f1ee;
+    }
+    .md-header__title, .md-header__button, .md-search__icon { color: #f1f1ee; }
+    .md-search__form { background: rgba(255,255,255,0.10); }
+    .md-search__form:hover { background: rgba(255,255,255,0.16); }
+    .md-search__input { color: #f1f1ee; }
+    .md-search__input::placeholder { color: rgba(241,241,238,0.6); }
+
+    .px-hero {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      min-height: 100vh;
+      background: radial-gradient(135% 120% at 66% -6%, #15191f 0%, #0a0c0f 60%);
+      color: #ececeb;
+    }
+    .px-hero__art {
+      position: absolute; inset: 0; z-index: -2;
+      background: radial-gradient(125% 95% at 64% -4%, #161b22 0%, #0a0c0f 56%);
+      overflow: hidden;
+    }
+    .px-canvas {
+      position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    }
+    .px-hero__veil {
+      position: absolute; inset: 0; z-index: -1;
+      background:
+        linear-gradient(90deg, rgba(10,12,15,0.85) 0%, rgba(10,12,15,0.45) 38%, rgba(10,12,15,0) 70%),
+        linear-gradient(0deg, rgba(10,12,15,0.85) 0%, rgba(10,12,15,0) 46%);
+    }
+    .px-hero__inner {
+      position: relative; width: 100%; max-width: 72rem; margin: 0 auto;
+      padding: 0 1.4rem 6.5rem clamp(1.4rem, 5vw, 4.5rem);
+    }
+    .px-hero__title {
+      margin: 0 0 1.2rem; max-width: 26rem;
+      font-family: "Inter", var(--md-text-font, sans-serif);
+      font-weight: 700; font-size: 48px;
+      line-height: 1.2; letter-spacing: -0.05em; color: #fff;
+      text-shadow: 0 0 16px #000;
+    }
+    .px-hero__title-em {
+      color: #f3c24a;
+      text-shadow: 0 0 18px rgba(243,194,74,0.35), 0 1px 12px rgba(0,0,0,0.55);
+    }
+    .px-hero__lede {
+      margin: 0 0 0.7rem; max-width: 31rem;
+      font-size: 18px; line-height: 1.5; color: #fff;
+      text-shadow: 0 0 8px #000;
+    }
+    .px-hero__note {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      margin: 0 0 1.7rem;
+      font-size: 13px; font-weight: 500; letter-spacing: 0.01em;
+      color: #b9bcc2; text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+    }
+    .px-hero__note::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: #f3c24a; box-shadow: 0 0 8px rgba(243,194,74,0.65);
+    }
+    .px-hero__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .px-btn {
+      display: inline-block;
+      padding: 0.625em 2em; border-radius: 1.2rem; border: none;
+      background: rgba(255,255,255,0.12);
+      -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+      color: #fff; font-weight: 700; font-size: 0.7rem; text-decoration: none;
+      transition: all 0.25s ease;
+    }
+    .px-btn:hover { background: rgba(255,255,255,0.2); transform: translateY(-1px); }
+    .px-btn:focus-visible { outline: 2px solid #f3c24a; outline-offset: 3px; }
+    .px-btn--primary {
+      color: #fff;
+      background: linear-gradient(35deg, #f1908d 0%, #f3c24a 100%);
+    }
+    .px-btn--primary:hover {
+      filter: brightness(1.05);
+      background: linear-gradient(35deg, #f1908d 0%, #f3c24a 100%);
+    }
+
+    @media screen and (max-width: 59.984375em) {
+      .px-hero__inner { padding-bottom: 4.5rem; }
+    }
+    @media screen and (max-width: 30em) {
+      .px-hero__title { font-size: 36px; }
+      .px-hero__lede { font-size: 14px; }
+    }
+  </style>
+{% endblock %}
+
+{% block hero %}
+<section class="px-hero">
+  <div class="px-hero__art" role="presentation">
+    <canvas class="px-canvas" aria-hidden="true"></canvas>
+  </div>
+  <div class="px-hero__veil"></div>
+  <div class="px-hero__inner">
+    <h1 class="px-hero__title">
+      Give AI agents real responsibility.<br>
+      <span class="px-hero__title-em">Without losing control.</span>
+    </h1>
+    <p class="px-hero__lede">
+      Pontifex authenticates, scopes, and audits every tool call an agent makes, so your
+      AI safely connects to the systems you run on.
+    </p>
+    <p class="px-hero__note">Up and running in minutes.</p>
+    <div class="px-hero__actions">
+      <a class="px-btn px-btn--primary" href="{{ 'overview/' | url }}">Learn more</a>
+      <a class="px-btn" href="{{ 'learn/quickstart/' | url }}">Quickstart</a>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  var canvas = document.querySelector(".px-canvas");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d", { alpha: false });
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var dpr = Math.min(window.devicePixelRatio || 1, 1.6);
+  var W = 0, H = 0, particles = [], raf = null, running = false;
+
+  // Gold -> coral palette, biased warm.
+  var stops = [[243,194,74], [240,170,96], [241,144,141], [255,221,150]];
+  function pick(i) { return stops[i % stops.length]; }
+
+  // Layered-trig flow field: smooth, organic, no library.
+  function angle(x, y, t) {
+    var nx = x * 0.0016, ny = y * 0.0019;
+    return (Math.sin(nx + t) +
+            Math.sin(ny - t * 0.8) +
+            Math.sin((nx + ny) * 1.7 + t * 0.5)) * 1.45;
+  }
+
+  function spawn(p) {
+    p.x = Math.random() * W;
+    p.y = Math.random() * H;
+    p.life = 60 + Math.random() * 140;
+    var c = pick((Math.random() * stops.length) | 0);
+    p.r = c[0]; p.g = c[1]; p.b = c[2];
+  }
+
+  function resize() {
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#0a0c0f";
+    ctx.fillRect(0, 0, W, H);
+    var count = Math.min(900, Math.floor(W * H / 2400));
+    particles = [];
+    for (var i = 0; i < count; i++) { var p = {}; spawn(p); particles.push(p); }
+  }
+
+  function step(t) {
+    // Fade prior frame slightly -> silky trails.
+    ctx.fillStyle = "rgba(10,12,15,0.055)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineWidth = 1.1;
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var a = angle(p.x, p.y, t);
+      var nx = p.x + Math.cos(a) * 1.5;
+      var ny = p.y + Math.sin(a) * 1.5;
+      ctx.strokeStyle = "rgba(" + p.r + "," + p.g + "," + p.b + ",0.42)";
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+      p.x = nx; p.y = ny; p.life--;
+      if (p.life <= 0 || nx < -20 || nx > W + 20 || ny < -20 || ny > H + 20) spawn(p);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function loop() {
+    if (!running) return;
+    step(performance.now() * 0.00018);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function start() { if (!running) { running = true; loop(); } }
+  function stop() { running = false; if (raf) cancelAnimationFrame(raf); }
+
+  resize();
+  if (reduce) {
+    // Static: advect a dense field a few hundred steps, then freeze.
+    for (var s = 0; s < 240; s++) step(s * 0.02);
+  } else {
+    start();
+    document.addEventListener("visibilitychange", function () {
+      document.hidden ? stop() : start();
+    });
+    var rt;
+    window.addEventListener("resize", function () {
+      clearTimeout(rt); rt = setTimeout(resize, 200);
+    });
+  }
+})();
+</script>
+{% endblock %}

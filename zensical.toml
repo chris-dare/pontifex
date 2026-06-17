@@ -3,10 +3,12 @@ site_name = "Pontifex MCP"
 site_description = "Enterprise-grade capabilities for MCP servers, built on the official MCP Python SDK."
 site_author = "Chris Dare"
 site_url = "https://pontifex.chrisdare.me/"
-copyright = """Part of <a href="https://argonauts.chrisdare.me">Argonauts</a>"""
+repo_url = "https://github.com/chris-dare/pontifex"
+repo_name = "chris-dare/pontifex"
 
 nav = [
   { "Home" = "index.md" },
+  { "Overview" = "overview.md" },
   { "Why Pontifex" = "why.md" },
   { "Learn" = [
     { "Quickstart" = "learn/quickstart.md" },
@@ -38,6 +40,9 @@ extra_css = ["stylesheets/extra.css"]
 
 [project.theme]
 language = "en"
+custom_dir = "overrides"
+logo = "assets/pontifex-arch-light.svg"
+favicon = "assets/favicon-32.png"
 features = [
   "navigation.sections",
   "navigation.top",

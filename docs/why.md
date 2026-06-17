@@ -1,7 +1,5 @@
 # Why Pontifex
 
-For the person deciding whether to put an AI agent in front of production.
-
 ## The gap
 
 The model is ready. The systems you need it to act on are not.

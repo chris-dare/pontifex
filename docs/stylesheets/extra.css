@@ -9,3 +9,24 @@
   --md-accent-fg-color:  #D6B560;
   --md-typeset-a-color:  #D6B560;
 }
+
+/* CTA buttons sized to match the landing-page buttons (overrides/home.html) */
+.md-typeset .px-cta .md-button {
+  font-size: 0.7rem;
+  line-height: 1.4;
+  font-weight: 700;
+  border-radius: 1.2rem;
+  padding: 0.625em 2em;
+}
+.md-typeset .px-cta .md-button--primary {
+  background: linear-gradient(35deg, #f1908d 0%, #f3c24a 100%);
+  border-color: transparent;
+  color: #fff;
+}
+.md-typeset .px-cta .md-button--primary:hover,
+.md-typeset .px-cta .md-button--primary:focus {
+  background: linear-gradient(35deg, #f1908d 0%, #f3c24a 100%);
+  border-color: transparent;
+  color: #fff;
+  filter: brightness(1.05);
+}

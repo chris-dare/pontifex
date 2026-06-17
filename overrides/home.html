@@ -30,7 +30,8 @@
       overflow: hidden;
       display: flex;
       align-items: flex-end;
-      min-height: 100vh;
+      min-height: 100vh;       /* fallback for older browsers */
+      min-height: 100svh;      /* small viewport: clears the mobile address bar on first paint */
       background: radial-gradient(135% 120% at 66% -6%, #15191f 0%, #0a0c0f 60%);
       color: #ececeb;
     }

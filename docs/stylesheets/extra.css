@@ -10,6 +10,11 @@
   --md-typeset-a-color:  #D6B560;
 }
 
+/* Scheme-aware logo: dark ink mark on the light header, light mark on the dark header */
+.md-logo .px-logo { display: none; }
+[data-md-color-scheme="default"] .md-logo .px-logo--ink { display: block; }
+[data-md-color-scheme="slate"] .md-logo .px-logo--light { display: block; }
+
 /* CTA buttons sized to match the landing-page buttons (overrides/home.html) */
 .md-typeset .px-cta .md-button {
   font-size: 0.7rem;

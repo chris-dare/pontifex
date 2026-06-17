@@ -1,0 +1,7 @@
+{% if config.theme.logo %}
+  <img class="px-logo px-logo--light" src="{{ 'assets/pontifex-arch-light.svg' | url }}" alt="{{ config.site_name }}">
+  <img class="px-logo px-logo--ink" src="{{ 'assets/pontifex-arch-ink.svg' | url }}" alt="{{ config.site_name }}">
+{% else %}
+  {% set icon = config.theme.icon.logo or "material/library" %}
+  {% include ".icons/" ~ icon ~ ".svg" %}
+{% endif %}

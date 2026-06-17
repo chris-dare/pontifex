@@ -3,10 +3,6 @@
 Pontifex exists to make one thing safe: **letting an AI agent call your real
 systems.**
 
-If you sign off on that, or explain it to a risk committee, this page lays out the
-security model in the terms that decision turns on. Engineers build against the same
-contract.
-
 ## The short version
 
 - **Nothing runs unauthenticated.** Every call carries a verified identity before any

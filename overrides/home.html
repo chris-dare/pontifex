@@ -19,6 +19,9 @@
       color: #f1f1ee;
     }
     .md-header__title, .md-header__button, .md-search__icon { color: #f1f1ee; }
+    /* Landing header sits on dark art: always the light logo, regardless of scheme */
+    .md-logo .px-logo--ink { display: none !important; }
+    .md-logo .px-logo--light { display: block !important; }
     .md-search__form { background: rgba(255,255,255,0.10); }
     .md-search__form:hover { background: rgba(255,255,255,0.16); }
     .md-search__input { color: #f1f1ee; }

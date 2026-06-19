@@ -1,7 +1,23 @@
-from pydantic import Field, HttpUrl, TypeAdapter, ValidationError, field_validator, model_validator
+from pydantic import Field, HttpUrl, TypeAdapter, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _HTTP_URL = TypeAdapter(HttpUrl)
+
+
+def require_url(value: str, env_var: str, feature: str) -> str:
+    """Return `value`, or raise if it's empty.
+
+    DB/Redis URLs default to empty and are only required when a feature that
+    needs them is enabled (SQL audit, API-key auth, Redis cache, rate limiting).
+    Backends call this at construction so the error names both the missing env
+    var and the feature that needs it, instead of failing opaquely later.
+    """
+    if not value:
+        raise ValueError(
+            f"{feature} requires {env_var} to be set, but it is empty. "
+            f"Set {env_var}, or disable {feature}."
+        )
+    return value
 
 
 class CoreSettings(BaseSettings):
@@ -17,11 +33,13 @@ class CoreSettings(BaseSettings):
     # domain settings — so, like `AUTH_*` / `PUBLIC_BASE_URL`, they read from
     # bare, unprefixed env vars regardless of a domain's `env_prefix`.
     #
-    # Required in effect: the default is empty and `_require_db_and_redis`
-    # rejects an empty value, so the app fails fast at startup if neither is set
-    # rather than silently falling back to a localhost default. (An empty default
-    # — rather than no default — keeps no-arg construction valid for type
-    # checkers, since the real values come from the environment.)
+    # Optional by default — empty is valid. A bare server (stdio, or HTTP with
+    # no auth and stdout audit) needs neither. Each is required only when a
+    # feature that uses it is enabled: `database_url` for SQL audit / API-key
+    # auth, `redis_url` for the Redis cache / API-key resolver cache / rate
+    # limiting. That check happens at backend construction via `require_url`,
+    # so the error names the missing var and the feature — not here, which would
+    # force infra on every server including stdio.
     redis_url: str = Field(default="", validation_alias="REDIS_URL")
     database_url: str = Field(default="", validation_alias="DATABASE_URL")
 
@@ -105,15 +123,6 @@ class CoreSettings(BaseSettings):
             except ValidationError as exc:
                 raise ValueError(f"public_base_url is not a valid URL: {v!r}") from exc
         return v
-
-    @model_validator(mode="after")
-    def _require_db_and_redis(self) -> "CoreSettings":
-        """Fail fast if the required connection URLs weren't configured."""
-        missing = [name for name in ("database_url", "redis_url") if not getattr(self, name)]
-        if missing:
-            names = ", ".join(name.upper() for name in missing)
-            raise ValueError(f"required environment variable(s) not set: {names}")
-        return self
 
     # `populate_by_name` is left False (the default) on purpose: a field with a
     # `validation_alias` is then populated ONLY from that alias, never from

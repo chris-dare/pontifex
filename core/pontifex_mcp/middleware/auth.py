@@ -85,6 +85,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.allowed_hosts = allowed_hosts
         self.rate_limiter = rate_limiter
         self.allow_anonymous = allow_anonymous
+        self.jwt_validator = jwt_validator
         self.resolver: APIKeyResolver | None
         if api_key_resolver is not None:
             self.resolver = api_key_resolver
@@ -97,14 +98,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             if self.rate_limiter is None:
                 self.rate_limiter = RateLimiter(self.redis_client)
-        elif allow_anonymous:
+        elif allow_anonymous or jwt_validator is not None:
+            # Open mode, or JWT-only (no API-key store): no resolver. An sk_
+            # token then fails cleanly (the dispatch path guards a None resolver).
             self.resolver = None
         else:
             raise ValueError(
                 "AuthMiddleware needs redis_url + database_url, an explicit "
-                "api_key_resolver, or allow_anonymous=True."
+                "api_key_resolver, a jwt_validator, or allow_anonymous=True."
             )
-        self.jwt_validator = jwt_validator
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in _PUBLIC_PATHS:

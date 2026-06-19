@@ -70,8 +70,36 @@ def create_mcp_http_app(
             mcp_server, audit, settings.connectors_config
         )
 
+    return build_http_app(
+        domain_name,
+        mcp_server,
+        settings,
+        health_check,
+        connector_managers=connector_managers,
+    )
+
+
+def build_http_app(
+    domain_name: str,
+    mcp_server: FastMCP,
+    settings: CoreSettings,
+    health_check: Callable[[], Awaitable[dict[str, Any]]],
+    *,
+    allow_anonymous: bool = False,
+    connector_managers: dict[str, DataSourceManager] | None = None,
+) -> FastAPI:
+    """Wrap an already-built FastMCP server in a FastAPI app.
+
+    Shared by `create_mcp_http_app` (which builds the FastMCP from a
+    `register_tools` callback) and `PontifexMCP.run()` (which passes itself, with
+    tools already registered). `allow_anonymous` selects open mode: the
+    AuthMiddleware injects an anonymous caller instead of requiring a token, and
+    no JWT/API-key backend is wired.
+    """
+    connector_managers = connector_managers or {}
+
     jwt_validator: JWTValidator | None = None
-    if settings.auth_jwks_url:
+    if not allow_anonymous and settings.auth_jwks_url:
         jwt_validator = JWTValidator(
             jwks_url=settings.auth_jwks_url,
             issuer=settings.auth_issuer,
@@ -100,15 +128,23 @@ def create_mcp_http_app(
     if settings.logfire_token:
         setup_logfire(app, domain_name, settings.logfire_token)
 
-    app.add_middleware(
-        AuthMiddleware,
-        redis_url=settings.redis_url,
-        database_url=settings.database_url,
-        cache_ttl=settings.api_key_cache_ttl_seconds,
-        jwt_validator=jwt_validator,
-        public_base_url=settings.public_base_url,
-        allowed_hosts=settings.allowed_hosts,
-    )
+    if allow_anonymous:
+        app.add_middleware(
+            AuthMiddleware,
+            allow_anonymous=True,
+            public_base_url=settings.public_base_url,
+            allowed_hosts=settings.allowed_hosts,
+        )
+    else:
+        app.add_middleware(
+            AuthMiddleware,
+            redis_url=settings.redis_url or None,
+            database_url=settings.database_url or None,
+            cache_ttl=settings.api_key_cache_ttl_seconds,
+            jwt_validator=jwt_validator,
+            public_base_url=settings.public_base_url,
+            allowed_hosts=settings.allowed_hosts,
+        )
 
     @app.get("/health/live")
     async def liveness() -> dict[str, str]:

@@ -14,11 +14,14 @@ keys (the standard ToolResponse envelope). The wrapper reads those for audit.
 """
 
 import functools
+import inspect
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mcp import types
+from mcp.server.fastmcp import Context
+from mcp.server.fastmcp.utilities.context_injection import find_context_parameter
 
 from pontifex_mcp.audit import AuditWriter
 from pontifex_mcp.auth.context import resolve_caller
@@ -119,8 +122,8 @@ def tool_runtime(
     *,
     domain: str,
     tool_name: str,
-    resource: str,
-    action: str,
+    resource: str | None,
+    action: str | None,
     audit: AuditWriter,
     source_unavailable_exception: type[BaseException] | None = None,
 ) -> Callable[[Callable[..., Awaitable[dict]]], Callable[..., Awaitable[Any]]]:
@@ -128,13 +131,26 @@ def tool_runtime(
 
     `source_unavailable_exception` lets a domain plug in its own "all sources
     failed" exception type (e.g., `AllSourcesUnavailable` in the GSE domain).
+
+    When `resource`/`action` are None the tool declared no scope, so the scope
+    check is skipped (the call is still audited and still requires a resolved
+    caller). A declared scope is always enforced against the caller.
+
+    Caller resolution needs the MCP `Context` (it carries the HTTP request). If
+    the wrapped tool doesn't declare a `Context` parameter, the wrapper advertises
+    one on its own signature so FastMCP injects it, then strips it before calling
+    the tool — so a plain `async def f(x: int)` still resolves the HTTP caller.
     """
 
     def decorator(fn: Callable[..., Awaitable[dict]]) -> Callable[..., Awaitable[Any]]:
+        ctx_param = find_context_parameter(fn)
+        fn_has_ctx = ctx_param is not None
+        ctx_key = ctx_param or "ctx"
+
         @functools.wraps(fn)
         async def wrapper(*args: object, **kwargs: object) -> Any:
-            ctx = kwargs.get("ctx")
-            tool_params = {k: v for k, v in kwargs.items() if k != "ctx"}
+            ctx = kwargs.get(ctx_key)
+            tool_params = {k: v for k, v in kwargs.items() if k != ctx_key}
 
             start = time.monotonic()
             caller = resolve_caller(ctx)
@@ -147,11 +163,19 @@ def tool_runtime(
                 if caller is None:
                     error = "auth_failed"
                     return _auth_failed()
-                if not caller.can_use_tool(domain, resource, action):
+                if (
+                    resource is not None
+                    and action is not None
+                    and not caller.can_use_tool(domain, resource, action)
+                ):
                     error = "scope_denied"
                     return _scope_denied(domain, resource, action)
 
-                result = await fn(*args, **kwargs)
+                # Don't pass the injected ctx to a tool that didn't ask for one.
+                call_kwargs = (
+                    kwargs if fn_has_ctx else {k: v for k, v in kwargs.items() if k != "ctx"}
+                )
+                result = await fn(*args, **call_kwargs)
 
                 if isinstance(result, dict):
                     data_source = str(result.get("source", "unknown"))
@@ -191,6 +215,24 @@ def tool_runtime(
                     ip_address=_ip_address(ctx),
                     delegated_audience=delegated_audience,
                 )
+
+        if not fn_has_ctx:
+            # Advertise a `ctx` parameter so FastMCP injects the Context. It must
+            # appear on both the signature (schema building) and the annotations
+            # (`find_context_parameter` uses `get_type_hints`); it's keyword-only
+            # with a default so it never affects the tool's input schema.
+            sig = inspect.signature(fn)
+            params = list(sig.parameters.values())
+            params.append(
+                inspect.Parameter(
+                    "ctx",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=None,
+                    annotation=Context | None,
+                )
+            )
+            wrapper.__signature__ = sig.replace(parameters=params)  # ty: ignore[unresolved-attribute]
+            wrapper.__annotations__ = {**getattr(fn, "__annotations__", {}), "ctx": Context | None}
 
         return wrapper
 

@@ -12,6 +12,7 @@ is an internal detail and may change without a major-version bump.
 
 from pontifex_mcp.adapters.base import DataAdapter
 from pontifex_mcp.adapters.manager import DataSourceManager
+from pontifex_mcp.app import ApiKeyAuth, JwtAuth, PontifexMCP
 from pontifex_mcp.audit import (
     AuditWriter,
     DbAuditWriter,
@@ -39,9 +40,12 @@ from pontifex_mcp.utils.retry import async_retry
 __version__ = "0.3.0"
 
 __all__ = [
+    "ApiKeyAuth",
     "AuditRecord",
     "AuditWriter",
     "BearerFromEnv",
+    "JwtAuth",
+    "PontifexMCP",
     "Cache",
     "CallerIdentity",
     "CircuitBreaker",

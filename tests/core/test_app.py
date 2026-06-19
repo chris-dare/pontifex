@@ -170,6 +170,37 @@ def test_tool_decorator_robustness():
             return {}
 
 
+def test_cache_resolution(monkeypatch):
+    from pontifex_mcp.cache.redis_cache import Cache
+
+    assert PontifexMCP("payments").cache is None  # default off
+
+    redis_app = PontifexMCP("payments", cache="redis://localhost:6379/0")
+    assert isinstance(redis_app.cache, Cache)
+    assert redis_app.cache.prefix == "payments"  # namespaced by domain
+
+    existing = Cache("redis://localhost:6379/0", prefix="custom")
+    assert PontifexMCP("payments", cache=existing).cache is existing
+
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    with pytest.raises(ValueError, match="REDIS_URL"):
+        PontifexMCP("payments", cache=True)
+
+
+def test_add_openapi_registers_tools():
+    mcp = PontifexMCP("orders")
+    spec = {
+        "openapi": "3.0.0",
+        "info": {"title": "t", "version": "1"},
+        "paths": {
+            "/ping": {"get": {"operationId": "ping", "responses": {"200": {"description": "ok"}}}}
+        },
+    }
+    before = set(mcp._tool_manager._tools)
+    mcp.add_openapi(spec=spec, base_url="https://api.example.com", include=["GET /ping"])
+    assert len(set(mcp._tool_manager._tools) - before) == 1
+
+
 def test_require_auth_env_fails_fast(monkeypatch):
     """ApiKeyAuth without DATABASE_URL/REDIS_URL fails fast; JwtAuth needs JWKS."""
     monkeypatch.delenv("DATABASE_URL", raising=False)

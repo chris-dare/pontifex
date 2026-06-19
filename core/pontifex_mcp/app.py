@@ -28,10 +28,13 @@ import structlog
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from pontifex_mcp.adapters.manager import DataSourceManager
 from pontifex_mcp.audit import AuditSpec, AuditWriter, resolve_audit_writer
 from pontifex_mcp.auth.context import set_stdio_caller
 from pontifex_mcp.auth.identity import anonymous_identity
+from pontifex_mcp.cache.redis_cache import Cache
 from pontifex_mcp.config import CoreSettings, require_url
+from pontifex_mcp.connectors.register import register_openapi_tools
 from pontifex_mcp.server_factory import build_http_app
 from pontifex_mcp.tool_runtime import tool_runtime
 
@@ -73,6 +76,29 @@ def _parse_scope(scope: str | None, default_domain: str) -> tuple[str, str | Non
     )
 
 
+def _resolve_cache(spec: object, settings: CoreSettings, domain: str) -> Cache | None:
+    """Resolve the `cache=` kwarg to a `Cache` (or None).
+
+    - `None` / `False` → no cache
+    - a `Cache` → used as-is
+    - `True` / `"redis"` → `Cache` from `REDIS_URL` (required)
+    - any other str → a Redis URL
+    Keys are namespaced by the app's domain.
+    """
+    if spec is None or spec is False:
+        return None
+    if isinstance(spec, Cache):
+        return spec
+    if spec is True or spec == "redis":
+        url = require_url(settings.redis_url, "REDIS_URL", "cache")
+        return Cache(url, prefix=domain)
+    if isinstance(spec, str):
+        return Cache(spec, prefix=domain)
+    raise TypeError(
+        f"Unsupported cache spec {spec!r}: expected None, True, a Redis URL, or a Cache."
+    )
+
+
 class PontifexMCP(FastMCP):
     """FastMCP with opt-in auth, scopes, and audit. See module docstring."""
 
@@ -83,6 +109,7 @@ class PontifexMCP(FastMCP):
         *,
         auth: AuthBackend | None = None,
         audit: AuditSpec = None,
+        cache: object = None,
         **settings: Any,
     ) -> None:
         # Infra config (port, host, allowed_hosts, AUTH_*) comes from the env via
@@ -101,6 +128,8 @@ class PontifexMCP(FastMCP):
         self._domain = name
         self._auth = auth
         self._audit: AuditWriter = resolve_audit_writer(audit)
+        # Public so tools (which close over the app) can use it: `await mcp.cache.get(...)`.
+        self.cache: Cache | None = _resolve_cache(cache, self._settings, name)
 
     def tool(
         self,
@@ -181,6 +210,37 @@ class PontifexMCP(FastMCP):
             super().run(transport="sse", mount_path=mount_path)
         else:
             raise ValueError(f"Unknown transport: {transport!r}")
+
+    def add_openapi(
+        self,
+        *,
+        spec: str | dict[str, Any],
+        base_url: str,
+        include: list[str],
+        allow_mutations: bool = False,
+        auth: Any = None,
+        names: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> DataSourceManager:
+        """Generate one governed tool per allowlisted operation in an OpenAPI spec.
+
+        The tools register on this app with its audit sink and domain. `include`
+        is an explicit allowlist of operations (e.g. ``["GET /orders/{id}"]``);
+        mutating verbs additionally require ``allow_mutations=True``. Returns the
+        `DataSourceManager` so you can fold it into a health check.
+        """
+        return register_openapi_tools(
+            self,
+            spec=spec,
+            domain=self._domain,
+            base_url=base_url,
+            audit=self._audit,
+            include=include,
+            allow_mutations=allow_mutations,
+            auth=auth,
+            names=names,
+            **kwargs,
+        )
 
     async def _readiness(self) -> dict[str, str]:
         return {"status": "ok"}

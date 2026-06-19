@@ -7,7 +7,9 @@ def scopes_match(scopes: list[str], domain: str, resource: str, action: str) -> 
       - {domain}:{resource}:*      specific resource, all actions
       - {domain}:{resource}:{action}   exact match
 
-    Scope comparison is case-insensitive.
+    Scope comparison is case-insensitive. A bare `*` is NOT a global wildcard
+    here — open/anonymous access is granted by `CallerIdentity.anonymous`, not by
+    a scope string, so a `*` leaking onto a real JWT/API-key grants nothing.
     """
     domain_l = domain.lower()
     resource_l = resource.lower()

@@ -1,13 +1,13 @@
 """Env-var handling for the shared-infrastructure DB/Redis settings.
 
 `DATABASE_URL` / `REDIS_URL` (like `AUTH_*` / `PUBLIC_BASE_URL`) read from bare,
-unprefixed env vars even under a domain's `env_prefix`. They are **required** —
-a missing value fails fast rather than silently falling back to a localhost
-default.
+unprefixed env vars even under a domain's `env_prefix`. They are **optional** —
+a bare server needs neither; each is required only when a feature that uses it
+is enabled, validated at backend construction via `require_url`.
 """
 
 import pytest
-from pydantic import ValidationError
+from pontifex_mcp.config import require_url
 
 from domains.gse.gse_mcp.config import GSESettings
 
@@ -21,12 +21,24 @@ def test_reads_bare_names_under_domain_prefix(monkeypatch):
     assert s.redis_url == "redis://host:6379/0"
 
 
-def test_missing_urls_fail_fast(monkeypatch):
-    """Neither name set → construction raises rather than using a default."""
+def test_missing_urls_are_allowed(monkeypatch):
+    """Neither name set → construction succeeds with empty defaults.
+
+    A bare server (stdio, or HTTP with no auth and stdout audit) needs no DB or
+    Redis, so settings must construct without them.
+    """
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
-    with pytest.raises(ValidationError):
-        GSESettings()
+    s = GSESettings()
+    assert s.database_url == ""
+    assert s.redis_url == ""
+
+
+def test_require_url_names_var_and_feature():
+    """A backend that needs a missing URL fails with a message naming both."""
+    with pytest.raises(ValueError, match="DATABASE_URL.*SQL audit"):
+        require_url("", "DATABASE_URL", "SQL audit")
+    assert require_url("redis://x/0", "REDIS_URL", "Redis cache") == "redis://x/0"
 
 
 def test_construct_by_alias(monkeypatch):

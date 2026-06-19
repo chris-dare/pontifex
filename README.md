@@ -23,7 +23,7 @@ AI agents are ready to do real work against your systems. What the MCP SDK gives
 pip install pontifex-mcp     # or: uv add pontifex-mcp
 ```
 
-Requires Python 3.12+, Postgres, and Redis. The full quickstart — building your own domain, configuration, the security model — lives in **[core/README.md](core/README.md)** and the [documentation](https://chris-dare.github.io/pontifex/).
+Requires Python 3.12+ — and nothing else to get started. A `PontifexMCP` server runs with no database, no Redis, and no auth; you add Postgres and Redis only when you turn on API-key enforcement. The full quickstart — the zero-infra floor, graduating to enforced auth and durable audit, the security model — lives in **[core/README.md](core/README.md)** and the [documentation](https://chris-dare.github.io/pontifex/).
 
 ## This repository
 

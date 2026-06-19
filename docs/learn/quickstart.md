@@ -1,15 +1,13 @@
 # Quickstart
 
-A governed MCP server, authenticated and audited, running locally in a few minutes.
-
-This is a tutorial. Follow it top to bottom and you'll have a working server. For the
-problems you'll solve after that, wiring OAuth, onboarding an existing API, and
-deploying, see the [Guides](../guides/authenticate-callers.md).
+One server, built up a rung at a time. Start with the bare minimum, then bolt on
+each capability — auth, durable audit, caching, generated tools — one keyword at a
+time. Every rung is the previous server plus a single line.
 
 !!! info "Prerequisites"
 
-    **Python 3.12+**, a **Postgres** database (API keys + audit log), and **Redis**
-    (rate limiting + cache). Locally, `docker compose` is the quickest way to get both.
+    **Python 3.12+**. That's all you need for Rung 0. Postgres, Redis, and an OIDC
+    provider come in only on the rung that uses them.
 
 ## Install
 
@@ -25,102 +23,142 @@ deploying, see the [Guides](../guides/authenticate-callers.md).
     pip install pontifex-mcp
     ```
 
-## A server is three pieces
+## Rung 0 — a server with nothing
 
-- a **settings** class
-- your **tools**, each wrapped with `tool_runtime`
-- a call to **`create_mcp_http_app`**
-
-The runtime handles auth, scope checks, audit, and errors. Build one below.
-
-## Step 1: define your settings
-
-Subclass `CoreSettings`. Add whatever your domain needs.
+No database, no Redis, no auth, no spec. `PontifexMCP` is a drop-in subclass of the
+MCP SDK's `FastMCP`: swap the import, keep your tools.
 
 ```python
-from pontifex_mcp import CoreSettings
+from pontifex_mcp import PontifexMCP
 
-class OrdersSettings(CoreSettings):
-    orders_api_base: str = "https://orders.internal.example.com"
+mcp = PontifexMCP("payments")
+
+@mcp.tool(scope="balance:read")
+async def get_balance() -> dict:
+    return {"available": 421000, "currency": "usd"}
+
+if __name__ == "__main__":
+    mcp.run()                       # stdio; mcp.run(http=True) binds 127.0.0.1
 ```
-
-You inherit the infrastructure settings: `DATABASE_URL`, `REDIS_URL`, and the `AUTH_*`
-group. You don't redeclare them.
-
-## Step 2: write a tool
-
-Register the tool on the MCP server. Wrap the handler with `tool_runtime`.
-
-```python
-from typing import Any
-from mcp.server.fastmcp import Context, FastMCP
-from pontifex_mcp import AuditWriter, tool_runtime
-
-def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
-    @mcp.tool(name="orders_get_status", description="Look up the status of an order.")
-    @tool_runtime(
-        domain="orders",
-        tool_name="orders_get_status",
-        resource="order",   # scope checked: orders:order:read
-        action="read",
-        audit=audit,
-    )
-    async def get_order_status(order_id: str, ctx: Context | None = None) -> dict[str, Any]:
-        return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
-```
-
-The decorator declares the scope this call requires and writes the audit row. Your
-handler returns plain data.
-
-!!! tip
-
-    The handler holds no auth code and no logging code. `tool_runtime` does both, the
-    same way, for every tool. For how that consistency plays out, see
-    [How a request flows](../concepts/request-path.md).
-
-## Step 3: create the app
-
-```python
-from pontifex_mcp import create_mcp_http_app
-
-async def health() -> dict[str, Any]:
-    return {"status": "ok"}
-
-app = create_mcp_http_app("orders", OrdersSettings(), register_tools, health)
-```
-
-## Step 4: run it
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://... REDIS_URL=redis://... \
-  uv run uvicorn your_module:app --port 8080
+python server.py
 ```
 
-The MCP endpoint is at `/mcp`. Health checks are at `/health/live` and `/health/ready`.
+A complete, running server. The caller is anonymous, the `scope=` you declared is
+advisory, and every call is audited to stdout:
 
-## Check it
+```json
+{"event": "tool_call", "tool": "get_balance", "owner_id": "anonymous", "response_ms": 1}
+```
 
-That's a complete server.
+Nothing below changes this tool. Each rung adds **one argument**.
 
-Pontifex authenticates every call to `orders_get_status`, checks it for the
-`orders:order:read` scope, and writes it to the audit log. You wrote none of that.
+## Rung 1 — bolt on auth
 
-Pontifex rejects a caller without the scope before your handler runs. A caller with it
-gets the data and leaves a row behind saying who they were and what they touched.
+Add an auth backend. Now a Bearer credential is required and the scopes you declared
+are enforced.
 
-## Recap
+```python
+from pontifex_mcp import PontifexMCP, ApiKeyAuth
 
-You just:
+mcp = PontifexMCP("payments", auth=ApiKeyAuth())   # ← the only change
+```
 
-- subclassed `CoreSettings` for your domain
-- wrote a tool and wrapped it with `tool_runtime`
-- built the app with `create_mcp_http_app`
-- ran it with any ASGI server
+`ApiKeyAuth()` reads `DATABASE_URL` (the key store) and `REDIS_URL` (the lookup cache)
+from the environment, and fails fast if they're missing. Every request now needs a
+valid `sk_…` API key; a caller without `payments:balance:read` is rejected *before*
+your handler runs. For OAuth 2.1 JWTs from any OIDC provider, use `auth=JwtAuth()`
+instead (reads the `AUTH_*` env vars).
+
+```bash
+DATABASE_URL=postgresql+asyncpg://… REDIS_URL=redis://… python server.py
+```
+
+## Rung 2 — bolt on durable audit
+
+stdout is fine for dev; for a record you can query, point `audit=` at a datastore.
+
+```python
+mcp = PontifexMCP("payments", auth=ApiKeyAuth(), audit="audit.db")   # ← added
+```
+
+`"audit.db"` is a local SQLite file — zero setup. In production, hand `audit=` a
+`postgresql+asyncpg://…` URL; the dialect is detected from the connection string. Each
+call now persists a row: who, what, when, data source, latency.
+
+## Rung 3 — bolt on a cache
+
+Give the app a cache and reach it from any tool via `mcp.cache` (keys are namespaced
+by the app's domain).
+
+```python
+mcp = PontifexMCP("payments", auth=ApiKeyAuth(), audit="audit.db", cache="redis://…")  # ← added
+
+@mcp.tool(scope="balance:read")
+async def get_balance() -> dict:
+    if mcp.cache and (hit := await mcp.cache.get("balance")):
+        return hit
+    data = {"available": 421000, "currency": "usd"}
+    if mcp.cache:
+        await mcp.cache.set("balance", data, ttl_seconds=30)
+    return data
+```
+
+`cache="redis://…"` (or `cache=True` to read `REDIS_URL`) wires a Redis-backed cache;
+omit it and `mcp.cache` is `None`, so the same tool runs uncached in dev.
+
+## Rung 4 — bolt on tools from an OpenAPI spec
+
+Already have an API? Generate governed tools from its spec — each one authenticated,
+scope-checked, and audited like a hand-written one. No new handlers.
+
+```python
+mcp.add_openapi(
+    spec="https://payments.internal/openapi.json",
+    base_url="https://payments.internal",
+    include=["GET /charges/{id}", "GET /customers/{id}"],   # explicit allowlist
+)
+```
+
+`include` is a deny-by-default allowlist of operations; mutating verbs additionally
+require `allow_mutations=True`. The generated tools carry scopes derived from the
+domain and operation, so they slot straight into the same enforcement and audit as
+the rest of the server.
+
+## The finished server
+
+```python
+from pontifex_mcp import PontifexMCP, ApiKeyAuth
+
+mcp = PontifexMCP(
+    "payments",
+    auth=ApiKeyAuth(),        # Rung 1 — enforce auth + scopes
+    audit="audit.db",         # Rung 2 — durable audit (a Postgres URL in prod)
+    cache="redis://…",        # Rung 3 — Redis cache via mcp.cache
+)
+
+@mcp.tool(scope="balance:read")
+async def get_balance() -> dict: ...
+
+mcp.add_openapi(                # Rung 4 — generated, governed tools
+    spec="https://payments.internal/openapi.json",
+    base_url="https://payments.internal",
+    include=["GET /charges/{id}"],
+)
+
+if __name__ == "__main__":
+    mcp.run(http=True)
+```
+
+Every rung was additive: the tool from Rung 0 never changed, and each capability is one
+keyword you can turn on from code or from the environment — so laptop → production is
+config, not a rewrite.
 
 ## Next steps
 
-- **Already have an OpenAPI spec?** Skip hand-written tools entirely:
-  [connect an API](connect-an-api.md).
 - **Let real callers in.** Issue API keys and wire OAuth in
   [Authenticate callers](../guides/authenticate-callers.md).
+- **Onboard a whole API.** [Connect an API](connect-an-api.md) goes deeper on the
+  OpenAPI path, including per-user OAuth token exchange to the downstream.
 - **Understand what just happened.** [How a request flows](../concepts/request-path.md).

@@ -29,54 +29,53 @@ Asymmetric-only JWT validation, generic auth errors, and no token claim can esca
 pip install pontifex-mcp     # or: uv add pontifex-mcp
 ```
 
-Requires Python 3.12+, Postgres, and Redis.
+Requires Python 3.12+. The floor below needs nothing else; Postgres and Redis come in only
+when you turn on API-key auth.
 
-## Build your own domain
+## Start in a few lines
 
-A domain is: a settings class, one or more data adapters, and tools wrapped with `tool_runtime`.
-Everything below comes from the top-level package.
+`PontifexMCP` is a drop-in subclass of the MCP SDK's `FastMCP`. The floor needs no database,
+no Redis, and no auth — the caller is anonymous and every call is audited to stdout.
 
 ```python
-from typing import Any
+from pontifex_mcp import PontifexMCP
 
-from mcp.server.fastmcp import Context, FastMCP
-from pontifex_mcp import (
-    AuditWriter,
-    CoreSettings,
-    create_mcp_http_app,
-    tool_runtime,
-)
+mcp = PontifexMCP("payments")
 
+@mcp.tool(scope="balance:read")
+async def get_balance() -> dict:
+    return {"available": 421000, "currency": "usd"}
 
-class OrdersSettings(CoreSettings):
-    orders_api_base: str = "https://orders.internal.example.com"
+@mcp.tool(scope="refunds:execute")
+async def issue_refund(charge_id: str, amount: int, idempotency_key: str) -> dict:
+    return {"refunded": amount, "charge_id": charge_id, "status": "succeeded"}
 
-
-def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
-    @mcp.tool(name="orders_get_status", description="Look up the status of an order.")
-    @tool_runtime(
-        domain="orders",
-        tool_name="orders_get_status",
-        resource="order",        # scope checked: orders:order:read
-        action="read",
-        audit=audit,
-    )
-    async def get_order_status(order_id: str, ctx: Context | None = None) -> dict[str, Any]:
-        # ... fetch from your internal system (ideally through a DataAdapter) ...
-        return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
-
-
-async def health() -> dict[str, Any]:
-    return {"status": "ok"}
-
-
-settings = OrdersSettings()
-app = create_mcp_http_app("orders", settings, register_tools, health)
-# `uv run uvicorn your_module:app` → MCP endpoint at /mcp, health at /health/ready
+if __name__ == "__main__":
+    mcp.run()                 # stdio; mcp.run(http=True) binds 127.0.0.1
 ```
 
-Auth, scope checks, rate limiting, the audit row, and the structured error envelope are all applied by
-`tool_runtime` and the server's middleware — your handler just returns data.
+The `scope=` you declared is advisory until you add an auth backend — then it's enforced,
+unchanged.
+
+## Graduate to enforcement
+
+```python
+from pontifex_mcp import PontifexMCP, ApiKeyAuth
+
+mcp = PontifexMCP(
+    "payments",
+    auth=ApiKeyAuth(),        # Bearer required, scopes enforced (DATABASE_URL + REDIS_URL)
+    audit="audit.db",         # durable audit — SQLite here; a Postgres URL in production
+)
+```
+
+Now every request needs a valid `sk_…` API key (or an OAuth 2.1 JWT via `JwtAuth()`), a
+caller without `payments:refunds:execute` is rejected before `issue_refund` runs, and each
+call persists an audit row — who, what, when, latency. The same switches flip from the
+environment, so laptop → production is config, not code.
+
+Auth, scope checks, rate limiting, the audit row, and the structured error envelope are all
+applied for you — your handler just returns data.
 
 ### Configuration
 

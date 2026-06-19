@@ -10,7 +10,7 @@ from starlette.types import ASGIApp
 
 from pontifex_mcp.auth.api_keys import APIKeyResolver
 from pontifex_mcp.auth.discovery import external_base_url
-from pontifex_mcp.auth.identity import CallerIdentity
+from pontifex_mcp.auth.identity import CallerIdentity, anonymous_identity
 from pontifex_mcp.auth.jwt_validator import JWTValidationError, JWTValidator
 from pontifex_mcp.middleware.rate_limit import RateLimiter
 
@@ -59,32 +59,37 @@ class AuthMiddleware(BaseHTTPMiddleware):
         rate_limiter: RateLimiter | None = None,
         public_base_url: str = "",
         allowed_hosts: str = "",
+        allow_anonymous: bool = False,
     ) -> None:
         """Build the middleware.
 
-        Either pass an explicit ``api_key_resolver`` (preferred in tests), or
+        Either pass an explicit ``api_key_resolver`` (preferred in tests),
         provide ``redis_url`` + ``database_url`` so the middleware can wire one
-        up itself.  ``public_base_url`` / ``allowed_hosts`` are passed through to
-        :func:`external_base_url` to pin the host advertised in the
+        up itself, or set ``allow_anonymous=True`` for an open server with no
+        auth backend at all.  ``public_base_url`` / ``allowed_hosts`` are passed
+        through to :func:`external_base_url` to pin the host advertised in the
         ``WWW-Authenticate`` challenge.
 
         When the middleware wires up its own Redis client (the ``redis_url``
         path) it also builds a :class:`RateLimiter` from it unless one is given.
         In the injected-resolver path a ``rate_limiter`` must be passed
         explicitly; otherwise rate limiting is off (convenient for tests).
+
+        ``allow_anonymous`` enables an open mode: with no resolver and no JWT
+        validator, every request resolves to an anonymous
+        :class:`CallerIdentity` (global ``*`` scope) instead of a 401.  The
+        network bind is gated to localhost in this mode by the facade.
         """
         super().__init__(app)
         self.public_base_url = public_base_url
         self.allowed_hosts = allowed_hosts
         self.rate_limiter = rate_limiter
+        self.allow_anonymous = allow_anonymous
+        self.jwt_validator = jwt_validator
+        self.resolver: APIKeyResolver | None
         if api_key_resolver is not None:
             self.resolver = api_key_resolver
-        else:
-            if redis_url is None or database_url is None:
-                raise ValueError(
-                    "AuthMiddleware needs redis_url + database_url, "
-                    "or an explicit api_key_resolver."
-                )
+        elif redis_url is not None and database_url is not None:
             self.redis_client = redis.from_url(redis_url)
             self.engine = create_async_engine(database_url, pool_size=5, max_overflow=10)
             self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
@@ -93,10 +98,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             if self.rate_limiter is None:
                 self.rate_limiter = RateLimiter(self.redis_client)
-        self.jwt_validator = jwt_validator
+        elif allow_anonymous or jwt_validator is not None:
+            # Open mode, or JWT-only (no API-key store): no resolver. An sk_
+            # token then fails cleanly (the dispatch path guards a None resolver).
+            self.resolver = None
+        else:
+            raise ValueError(
+                "AuthMiddleware needs redis_url + database_url, an explicit "
+                "api_key_resolver, a jwt_validator, or allow_anonymous=True."
+            )
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in _PUBLIC_PATHS:
+            return await call_next(request)
+
+        # Open mode: no auth backend configured. Every request is the anonymous
+        # caller (global `*` scope, advisory). Any presented token is ignored —
+        # there's nothing to validate it against.
+        if self.allow_anonymous and self.resolver is None and self.jwt_validator is None:
+            request.state.caller = anonymous_identity("http")
+            request.state.subject_token = None
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
@@ -110,6 +131,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # exchange (RFC 8693). API-key callers have no exchangeable token.
         subject_token: str | None = None
         if raw_token.startswith(_API_KEY_PREFIX):
+            if self.resolver is None:
+                return self._auth_error(request, "API-key auth is not configured on this server.")
             identity = await self.resolver.resolve(raw_token)
             if identity is None:
                 return self._auth_error(request, "Invalid, expired, or revoked API key.")

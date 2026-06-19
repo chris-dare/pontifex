@@ -4,20 +4,48 @@ Everything below imports from `pontifex_mcp`. This is the **supported public
 surface.**
 
 ```python
-from pontifex_mcp import create_mcp_http_app, tool_runtime, CoreSettings, DataAdapter  # etc.
+from pontifex_mcp import PontifexMCP, ApiKeyAuth, JwtAuth  # the facade — start here
 ```
 
 Anything reached through a deeper path (`pontifex_mcp.middleware`, `pontifex_mcp.auth`,
 …) is internal. It may change without a major-version bump.
 
-## Server
+## Server — the facade (start here)
 
-`create_mcp_http_app(domain_name, settings, register_tools, health_check, *, instructions='')` → `FastAPI`
+`PontifexMCP(name, instructions='', *, auth=None, audit=None, cache=None, **settings)`
+:   A drop-in subclass of the MCP SDK's `FastMCP`. Defaults to zero infrastructure
+    (anonymous caller, audit → stdout). `auth` enables enforcement (`ApiKeyAuth()` /
+    `JwtAuth()`); `audit` selects the sink (`None` → stdout, a path/URL → durable, a list
+    → tee); `cache` wires a Redis cache exposed as `mcp.cache`. See the
+    [Quickstart](../learn/quickstart.md) for the rung-by-rung build-up.
+
+`@mcp.tool(name=None, *, scope=None, **fastmcp_kwargs)`
+:   FastMCP's `.tool()` plus a `scope`. `scope="resource:action"` (or
+    `"domain:resource:action"`) is enforced when an auth backend is configured, advisory
+    otherwise; omit it for an unscoped tool. Folds scope-check + audit in for you.
+
+`mcp.run(transport='stdio', mount_path=None, *, http=False, auth=None)`
+:   Runs the server. `http=True` is shorthand for streamable-http. With no auth backend,
+    HTTP binds `127.0.0.1`; pass `auth="none"` to bind `0.0.0.0` (logs a warning).
+
+`mcp.add_openapi(*, spec, base_url, include, allow_mutations=False, auth=None, names=None)` → `DataSourceManager`
+:   Generate one governed tool per allowlisted operation in an OpenAPI spec, registered
+    on the app with its audit sink. See [Connect an API](../learn/connect-an-api.md).
+
+`ApiKeyAuth()` / `JwtAuth()`
+:   Auth backends passed to `PontifexMCP(auth=...)`. `ApiKeyAuth` reads `DATABASE_URL` +
+    `REDIS_URL` (and activates JWT too if `AUTH_JWKS_URL` is set); `JwtAuth` reads the
+    `AUTH_*` group. Both fail fast if their env vars are missing.
+
+## Server — lower-level factory
+
+For full control (or to wire pieces the facade doesn't expose), build the app directly:
+
+`create_mcp_http_app(domain_name, settings, register_tools, health_check, *, instructions='', audit=None)` → `FastAPI`
 :   Builds the ASGI app. Wires auth + rate-limit middleware, the audit writer, OAuth
-    discovery endpoints, and your registered tools. Returns a FastAPI app to serve with
-    any ASGI server.
+    discovery endpoints, and your registered tools. Requires `DATABASE_URL` + `REDIS_URL`.
 
-`run_mcp_stdio(domain_name, settings, register_tools, *, instructions='')` → `None`
+`run_mcp_stdio(domain_name, settings, register_tools, *, instructions='', audit=None, identity=None)` → `None`
 :   Blocking runner for the stdio transport: local MCP clients that launch the server
     as a subprocess. It returns `None`, not a coroutine. Call it, don't
     `await` it.
@@ -106,12 +134,21 @@ Exchanged tokens are cached behind the `TokenCache` seam, chosen by
 
 `AuditWriter`
 :   The audit sink protocol. Implementations receive an `AuditRecord` per tool call.
+    `resolve_audit_writer(spec)` maps the facade's `audit=` value to one of the below.
+
+`StdoutAuditWriter`
+:   Structured one-line-per-call via structlog. The facade default — audit stays visible
+    with no infrastructure.
 
 `DbAuditWriter`
-:   Persists audit records to Postgres. The production default.
+:   Persists audit records to SQLite (a path/`sqlite://` URL) or Postgres
+    (`postgresql+asyncpg://…`); the dialect is detected from the connection string.
+
+`TeeAuditWriter`
+:   Fans each record out to several writers (e.g. `audit=["stdout", "audit.db"]`).
 
 `NoopAuditWriter`
-:   Discards records. Useful in tests and local development.
+:   Discards records — the explicit "off" sink.
 
 ## Models
 

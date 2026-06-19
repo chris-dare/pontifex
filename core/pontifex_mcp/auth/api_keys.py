@@ -38,6 +38,10 @@ class APIKeyResolver:
         cached = await self.redis.get(f"apikey:{key_hash}")
         if cached:
             data = json.loads(cached)
+            # An API-key caller is never anonymous. Force the flag off rather
+            # than trust the cache blob: a poisoned/forged `apikey:<hash>` entry
+            # with `anonymous: true` would otherwise bypass every scope check.
+            data["anonymous"] = False
             return CallerIdentity(**data)
 
         async with self.db() as session:

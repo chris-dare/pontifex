@@ -59,6 +59,62 @@ def _build_client(
     return TestClient(app)
 
 
+def _build_open_client() -> TestClient:
+    """An app whose AuthMiddleware is in open mode (no auth backend)."""
+
+    async def echo(request: Request) -> JSONResponse:
+        caller: CallerIdentity = request.state.caller
+        return JSONResponse({"owner_id": caller.owner_id, "scopes": caller.scopes})
+
+    app = Starlette(routes=[Route("/mcp", echo, methods=["GET"])])
+    app.add_middleware(AuthMiddleware, allow_anonymous=True)
+    return TestClient(app)
+
+
+def test_open_mode_injects_anonymous_caller():
+    """With no resolver/JWT and allow_anonymous, an unauthenticated request
+    resolves to the anonymous caller (global `*` scope) instead of a 401."""
+    client = _build_open_client()
+    response = client.get("/mcp")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["owner_id"] == "anonymous"
+    assert body["scopes"] == ["*"]
+
+
+def test_open_mode_ignores_presented_token():
+    """In open mode there's nothing to validate a token against — it's ignored
+    and the caller is still anonymous (never an error)."""
+    client = _build_open_client()
+    response = client.get("/mcp", headers={"Authorization": "Bearer sk_live_whatever"})
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == "anonymous"
+
+
+def test_no_backend_and_not_anonymous_raises():
+    """Without a resolver, redis+db, or allow_anonymous, construction fails."""
+    with pytest.raises(ValueError, match="allow_anonymous"):
+        AuthMiddleware(Starlette())
+
+
+def test_allow_anonymous_with_configured_backend_still_enforces_auth():
+    """Security: allow_anonymous is a no-op when a backend IS configured — the
+    open-mode guard requires no resolver AND no jwt_validator, so a request
+    without a token is still rejected."""
+
+    async def echo(request: Request) -> JSONResponse:
+        return JSONResponse({"owner_id": request.state.caller.owner_id})
+
+    resolver = AsyncMock()
+    resolver.resolve = AsyncMock(return_value=None)
+    app = Starlette(routes=[Route("/mcp", echo, methods=["GET"])])
+    app.add_middleware(AuthMiddleware, api_key_resolver=resolver, allow_anonymous=True)
+    client = TestClient(app)
+
+    response = client.get("/mcp")  # no Authorization header
+    assert response.status_code == 401
+
+
 @pytest.fixture
 def api_key_caller() -> CallerIdentity:
     return CallerIdentity(

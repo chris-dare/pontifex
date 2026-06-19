@@ -12,7 +12,14 @@ is an internal detail and may change without a major-version bump.
 
 from pontifex_mcp.adapters.base import DataAdapter
 from pontifex_mcp.adapters.manager import DataSourceManager
-from pontifex_mcp.audit import AuditWriter, DbAuditWriter, NoopAuditWriter
+from pontifex_mcp.audit import (
+    AuditWriter,
+    DbAuditWriter,
+    NoopAuditWriter,
+    StdoutAuditWriter,
+    TeeAuditWriter,
+    resolve_audit_writer,
+)
 from pontifex_mcp.auth.identity import CallerIdentity
 from pontifex_mcp.auth.scopes import scopes_match
 from pontifex_mcp.cache.redis_cache import Cache
@@ -45,12 +52,15 @@ __all__ = [
     "HeaderFromEnv",
     "InvalidInput",
     "NoopAuditWriter",
+    "StdoutAuditWriter",
+    "TeeAuditWriter",
     "TokenExchange",
     "ToolError",
     "ToolResponse",
     "async_retry",
     "create_mcp_http_app",
     "register_openapi_tools",
+    "resolve_audit_writer",
     "run_mcp_stdio",
     "scopes_match",
     "tool_runtime",

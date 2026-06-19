@@ -36,14 +36,20 @@ def create_mcp_http_app(
     health_check: Callable[[], Awaitable[dict[str, Any]]],
     *,
     instructions: str = "",
+    audit: AuditWriter | None = None,
 ) -> FastAPI:
     """Build FastAPI hosting a FastMCP Streamable HTTP server.
 
     The MCP server is mounted at `/` so its endpoint is `/mcp` (FastMCP's
     default `streamable_http_path`). AuthMiddleware runs first on every
     request; readiness/liveness endpoints sit alongside.
+
+    `audit` is the resolved sink (the facade passes one in). When omitted it
+    defaults to a Postgres `DbAuditWriter` from `settings.database_url`, which
+    preserves the original direct-factory behavior.
     """
-    audit: AuditWriter = DbAuditWriter(settings.database_url)
+    if audit is None:
+        audit = DbAuditWriter(settings.database_url)
     hosts = [h.strip() for h in settings.allowed_hosts.split(",") if h.strip()]
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=bool(hosts),
@@ -148,8 +154,13 @@ def run_mcp_stdio(
     register_tools: Callable[[FastMCP, AuditWriter], None],
     *,
     instructions: str = "",
+    audit: AuditWriter | None = None,
 ) -> None:
-    """Blocking stdio runner. Loads identity from settings into a ContextVar."""
+    """Blocking stdio runner. Loads identity from settings into a ContextVar.
+
+    `audit` is the resolved sink; stdio honors it (e.g. stdout audit). When
+    omitted it defaults to `NoopAuditWriter`, preserving prior behavior.
+    """
     identity = CallerIdentity(
         key_id=settings.stdio_key_id,
         owner_id=settings.stdio_owner_id,
@@ -161,7 +172,8 @@ def run_mcp_stdio(
     set_stdio_caller(identity)
 
     mcp_server = FastMCP(name=f"{domain_name}-mcp", instructions=instructions)
-    audit = NoopAuditWriter()
+    if audit is None:
+        audit = NoopAuditWriter()
     register_tools(mcp_server, audit)
     if settings.connectors_config:
         register_connectors_from_config(mcp_server, audit, settings.connectors_config)

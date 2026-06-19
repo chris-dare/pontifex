@@ -83,7 +83,6 @@ class PontifexMCP(FastMCP):
         *,
         auth: AuthBackend | None = None,
         audit: AuditSpec = None,
-        cache: object = None,
         **settings: Any,
     ) -> None:
         # Infra config (port, host, allowed_hosts, AUTH_*) comes from the env via
@@ -101,7 +100,6 @@ class PontifexMCP(FastMCP):
         super().__init__(name=name, instructions=instructions, **settings)
         self._domain = name
         self._auth = auth
-        self._cache = cache
         self._audit: AuditWriter = resolve_audit_writer(audit)
 
     def tool(
@@ -122,6 +120,11 @@ class PontifexMCP(FastMCP):
         a `resource:action` (or `domain:resource:action`) string. Omit it for an
         advisory (unenforced) tool.
         """
+        if callable(name):
+            raise TypeError(
+                "@tool was used without parentheses. Use @mcp.tool() (optionally "
+                "with scope=...), not @mcp.tool."
+            )
         parent_tool = super().tool
         domain = self._domain
         audit = self._audit
@@ -193,6 +196,18 @@ class PontifexMCP(FastMCP):
 
         settings = self._settings
         open_mode = self._auth is None
+        if open_mode and (settings.auth_jwks_url or settings.database_url):
+            # The environment looks provisioned for auth, but no backend was
+            # passed — the server will run open/anonymous and ignore it. Surface
+            # that rather than silently failing open.
+            logger.warning(
+                "pontifex_open_mode_ignores_env_auth",
+                msg=(
+                    "Running open/anonymous, but AUTH_JWKS_URL / DATABASE_URL are set "
+                    "in the environment. Pass auth=ApiKeyAuth() or auth=JwtAuth() to "
+                    "enforce them."
+                ),
+            )
         if not open_mode:
             self._require_auth_env(settings)
 

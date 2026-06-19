@@ -15,6 +15,7 @@ Sinks:
 """
 
 import asyncio
+import inspect
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
@@ -233,7 +234,10 @@ def resolve_audit_writer(spec: object) -> AuditWriter:
         return StdoutAuditWriter()
     if spec is False:
         return NoopAuditWriter()
-    if isinstance(spec, AuditWriter):
+    # `runtime_checkable` only verifies a `write` attribute exists, so also
+    # require it to be a coroutine function — otherwise a file handle (sync
+    # `write`) would be mistaken for an AuditWriter and blow up at call time.
+    if isinstance(spec, AuditWriter) and inspect.iscoroutinefunction(spec.write):
         return spec
     if isinstance(spec, list):
         return TeeAuditWriter([resolve_audit_writer(s) for s in spec])

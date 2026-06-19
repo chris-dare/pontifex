@@ -63,6 +63,13 @@ def test_resolve_audit_writer_rejects_garbage():
         resolve_audit_writer(123)
 
 
+def test_resolve_audit_writer_rejects_sync_write_object(tmp_path):
+    """A file handle has a (sync) `write` attr but is not an AuditWriter."""
+    with (tmp_path / "x.log").open("w") as fh:
+        with pytest.raises(TypeError, match="Unsupported audit spec"):
+            resolve_audit_writer(fh)
+
+
 def test_resolve_honors_real_writer_over_string_sentinel():
     """A writer whose __eq__ matches a sentinel string is still returned as-is."""
 

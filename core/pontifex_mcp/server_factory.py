@@ -23,7 +23,7 @@ from pontifex_mcp.auth.context import set_stdio_caller
 from pontifex_mcp.auth.discovery import external_base_url
 from pontifex_mcp.auth.identity import CallerIdentity
 from pontifex_mcp.auth.jwt_validator import JWTValidator
-from pontifex_mcp.config import CoreSettings
+from pontifex_mcp.config import CoreSettings, require_url
 from pontifex_mcp.connectors.config import register_connectors_from_config
 from pontifex_mcp.middleware.auth import AuthMiddleware
 from pontifex_mcp.observability.logfire_setup import setup_logfire
@@ -48,6 +48,14 @@ def create_mcp_http_app(
     defaults to a Postgres `DbAuditWriter` from `settings.database_url`, which
     preserves the original direct-factory behavior.
     """
+    # This entry point always wires a Postgres audit writer (unless `audit` is
+    # given) and a closed AuthMiddleware backed by Redis + Postgres, so both are
+    # required. CoreSettings no longer enforces this globally (a bare PontifexMCP
+    # server needs neither), so fail fast here with a clear, named error rather
+    # than booting with a silently-broken audit/rate-limiter.
+    require_url(settings.database_url, "DATABASE_URL", "create_mcp_http_app")
+    require_url(settings.redis_url, "REDIS_URL", "create_mcp_http_app")
+
     if audit is None:
         audit = DbAuditWriter(settings.database_url)
     hosts = [h.strip() for h in settings.allowed_hosts.split(",") if h.strip()]

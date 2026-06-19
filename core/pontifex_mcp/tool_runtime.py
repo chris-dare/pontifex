@@ -221,18 +221,43 @@ def tool_runtime(
             # appear on both the signature (schema building) and the annotations
             # (`find_context_parameter` uses `get_type_hints`); it's keyword-only
             # with a default so it never affects the tool's input schema.
-            sig = inspect.signature(fn)
-            params = list(sig.parameters.values())
-            params.append(
-                inspect.Parameter(
-                    "ctx",
-                    inspect.Parameter.KEYWORD_ONLY,
-                    default=None,
-                    annotation=Context | None,
+            #
+            # `eval_str=True` resolves the tool's annotations in *its* module, so
+            # the rebuilt signature carries real types even under
+            # `from __future__ import annotations` (FastMCP won't re-eval an
+            # explicit `__signature__`).
+            try:
+                sig = inspect.signature(fn, eval_str=True)
+            except Exception:
+                sig = inspect.signature(fn)
+            if "ctx" in sig.parameters:
+                fn_name = getattr(fn, "__name__", "<tool>")
+                raise TypeError(
+                    f"Tool {fn_name!r} has a 'ctx' parameter that isn't typed as "
+                    "Context. Rename it, or annotate it as Context so it receives the "
+                    "MCP context."
                 )
+            ctx_param_obj = inspect.Parameter(
+                "ctx",
+                inspect.Parameter.KEYWORD_ONLY,
+                default=None,
+                annotation=Context | None,
             )
+            params = list(sig.parameters.values())
+            # A VAR_KEYWORD (**kwargs) must stay last; insert ctx before it.
+            insert_at = next(
+                (i for i, p in enumerate(params) if p.kind is inspect.Parameter.VAR_KEYWORD),
+                len(params),
+            )
+            params.insert(insert_at, ctx_param_obj)
             wrapper.__signature__ = sig.replace(parameters=params)  # ty: ignore[unresolved-attribute]
-            wrapper.__annotations__ = {**getattr(fn, "__annotations__", {}), "ctx": Context | None}
+            annotations = {
+                name: p.annotation
+                for name, p in sig.parameters.items()
+                if p.annotation is not inspect.Parameter.empty
+            }
+            annotations["ctx"] = Context | None
+            wrapper.__annotations__ = annotations
 
         return wrapper
 

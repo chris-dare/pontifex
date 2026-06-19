@@ -144,6 +144,32 @@ async def test_http_caller_resolved_for_ctx_less_tool():
     assert getattr(denied, "isError", False) is True
 
 
+def test_tool_decorator_robustness():
+    """ctx auto-injection must not crash valid tool shapes, and the facade keeps
+    FastMCP's @tool-without-parens guard."""
+    mcp = PontifexMCP("x")
+
+    @mcp.tool(scope="t:read")
+    async def with_kwargs(a: int, **kwargs) -> dict:  # **kwargs must not break injection
+        return {"a": a}
+
+    assert "with_kwargs" in mcp._tool_manager._tools
+
+    # A non-Context param literally named `ctx` is a clear error, not a silent break.
+    with pytest.raises(TypeError, match="ctx"):
+
+        @mcp.tool(scope="t:read")
+        async def bad(ctx: str) -> dict:
+            return {}
+
+    # @tool without parentheses is rejected like FastMCP does.
+    with pytest.raises(TypeError, match="without parentheses"):
+
+        @mcp.tool
+        async def noparens() -> dict:
+            return {}
+
+
 def test_require_auth_env_fails_fast(monkeypatch):
     """ApiKeyAuth without DATABASE_URL/REDIS_URL fails fast; JwtAuth needs JWKS."""
     monkeypatch.delenv("DATABASE_URL", raising=False)

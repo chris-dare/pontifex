@@ -1,15 +1,15 @@
 # Quickstart
 
-A governed MCP server, authenticated and audited, running locally in a few minutes.
+A governed MCP server running locally in a couple of minutes — then the same server,
+authenticated and audited, for production.
 
-This is a tutorial. Follow it top to bottom and you'll have a working server. For the
-problems you'll solve after that, wiring OAuth, onboarding an existing API, and
-deploying, see the [Guides](../guides/authenticate-callers.md).
+This is a tutorial. Follow it top to bottom. For what comes after — wiring OAuth,
+onboarding an existing API, deploying — see the [Guides](../guides/authenticate-callers.md).
 
 !!! info "Prerequisites"
 
-    **Python 3.12+**, a **Postgres** database (API keys + audit log), and **Redis**
-    (rate limiting + cache). Locally, `docker compose` is the quickest way to get both.
+    **Python 3.12+**. That's it for the floor below — no database, no Redis, no auth.
+    You add those only when you turn on enforcement (the [last section](#graduate-to-enterprise)).
 
 ## Install
 
@@ -25,97 +25,101 @@ deploying, see the [Guides](../guides/authenticate-callers.md).
     pip install pontifex-mcp
     ```
 
-## A server is three pieces
+## The floor: a server in a few lines
 
-- a **settings** class
-- your **tools**, each wrapped with `tool_runtime`
-- a call to **`create_mcp_http_app`**
-
-The runtime handles auth, scope checks, audit, and errors. Build one below.
-
-## Step 1: define your settings
-
-Subclass `CoreSettings`. Add whatever your domain needs.
+`PontifexMCP` is a drop-in subclass of the MCP SDK's `FastMCP`. If you've used FastMCP,
+this is the same API — swap the import, keep your tools.
 
 ```python
-from pontifex_mcp import CoreSettings
+from pontifex_mcp import PontifexMCP
 
-class OrdersSettings(CoreSettings):
-    orders_api_base: str = "https://orders.internal.example.com"
+mcp = PontifexMCP("payments")
+
+@mcp.tool(scope="balance:read")
+async def get_balance() -> dict:
+    return {"available": 421000, "currency": "usd"}
+
+if __name__ == "__main__":
+    mcp.run()
 ```
-
-You inherit the infrastructure settings: `DATABASE_URL`, `REDIS_URL`, and the `AUTH_*`
-group. You don't redeclare them.
-
-## Step 2: write a tool
-
-Register the tool on the MCP server. Wrap the handler with `tool_runtime`.
-
-```python
-from typing import Any
-from mcp.server.fastmcp import Context, FastMCP
-from pontifex_mcp import AuditWriter, tool_runtime
-
-def register_tools(mcp: FastMCP, audit: AuditWriter) -> None:
-    @mcp.tool(name="orders_get_status", description="Look up the status of an order.")
-    @tool_runtime(
-        domain="orders",
-        tool_name="orders_get_status",
-        resource="order",   # scope checked: orders:order:read
-        action="read",
-        audit=audit,
-    )
-    async def get_order_status(order_id: str, ctx: Context | None = None) -> dict[str, Any]:
-        return {"source": "orders-api", "cache_hit": False, "order_id": order_id, "status": "shipped"}
-```
-
-The decorator declares the scope this call requires and writes the audit row. Your
-handler returns plain data.
-
-!!! tip
-
-    The handler holds no auth code and no logging code. `tool_runtime` does both, the
-    same way, for every tool. For how that consistency plays out, see
-    [How a request flows](../concepts/request-path.md).
-
-## Step 3: create the app
-
-```python
-from pontifex_mcp import create_mcp_http_app
-
-async def health() -> dict[str, Any]:
-    return {"status": "ok"}
-
-app = create_mcp_http_app("orders", OrdersSettings(), register_tools, health)
-```
-
-## Step 4: run it
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://... REDIS_URL=redis://... \
-  uv run uvicorn your_module:app --port 8080
+python server.py        # runs over stdio
 ```
 
-The MCP endpoint is at `/mcp`. Health checks are at `/health/live` and `/health/ready`.
+That's a complete, running server — **no database, no Redis, no auth**. The caller is
+anonymous, scopes are advisory, and every tool call is audited to stdout:
 
-## Check it
+```json
+{"event": "tool_call", "tool": "get_balance", "owner_id": "anonymous", "response_ms": 1}
+```
 
-That's a complete server.
+The `scope="balance:read"` you declared is recorded now and **enforced the moment you add
+an auth backend** — you don't rewrite the tool to graduate.
 
-Pontifex authenticates every call to `orders_get_status`, checks it for the
-`orders:order:read` scope, and writes it to the audit log. You wrote none of that.
+## Add a high-stakes tool
 
-Pontifex rejects a caller without the scope before your handler runs. A caller with it
-gets the data and leaves a row behind saying who they were and what they touched.
+The same `scope=` pattern governs mutations. Strip the verb from the tool to get the
+resource; the verb is the action. A refund is `refunds:execute`:
+
+```python
+@mcp.tool(scope="refunds:execute")
+async def issue_refund(charge_id: str, amount: int, idempotency_key: str) -> dict:
+    return {"refunded": amount, "charge_id": charge_id, "status": "succeeded"}
+```
+
+When enforcement is on, only a caller holding `payments:refunds:execute` (or
+`payments:*:execute`, `payments:*:*`) can call it — and the audit row records *who*
+refunded *what*, *when*. That record is the whole point of putting an MCP server in front
+of money.
+
+## Serve over HTTP
+
+```python
+mcp.run(http=True)      # Streamable HTTP at /mcp
+```
+
+With no auth backend, HTTP binds **`127.0.0.1`** — open, but not reachable from the
+network. Exposing an unauthenticated server publicly is an explicit choice:
+
+```python
+mcp.run(http=True, auth="none")   # binds 0.0.0.0 — logs a loud warning
+```
+
+## Graduate to enterprise
+
+Turn on enforcement by adding backends — the tools above don't change:
+
+```python
+from pontifex_mcp import PontifexMCP, ApiKeyAuth
+
+mcp = PontifexMCP(
+    "payments",
+    auth=ApiKeyAuth(),     # Bearer required; scopes enforced. Reads DATABASE_URL + REDIS_URL
+    audit="audit.db",      # durable audit — SQLite here; a Postgres URL in production
+)
+```
+
+Now:
+
+- every request needs a valid `sk_…` API key (or an OAuth 2.1 JWT, via `JwtAuth()`);
+- `get_balance` and `issue_refund` enforce their scopes — a caller without
+  `payments:refunds:execute` is rejected *before* your handler runs;
+- audit rows persist to `audit.db` (a SQLite file for local dev) — point `audit=` at a
+  `postgresql+asyncpg://…` URL for production, no code change;
+- HTTP binds `0.0.0.0` normally, because the server is no longer unauthenticated.
+
+The same switches flip from the environment, so laptop → production is config, not code:
+set `DATABASE_URL`, `REDIS_URL`, and the `AUTH_*` group and deploy the identical server.
 
 ## Recap
 
 You just:
 
-- subclassed `CoreSettings` for your domain
-- wrote a tool and wrapped it with `tool_runtime`
-- built the app with `create_mcp_http_app`
-- ran it with any ASGI server
+- stood up a governed MCP server with **no infrastructure**;
+- declared `scope=` on read and execute tools, advisory until you opt in;
+- served it over stdio and localhost HTTP;
+- graduated to enforced auth and durable audit by adding two keyword arguments.
 
 ## Next steps
 

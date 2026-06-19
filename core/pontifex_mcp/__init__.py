@@ -20,7 +20,7 @@ from pontifex_mcp.audit import (
     TeeAuditWriter,
     resolve_audit_writer,
 )
-from pontifex_mcp.auth.identity import CallerIdentity
+from pontifex_mcp.auth.identity import CallerIdentity, anonymous_identity
 from pontifex_mcp.auth.scopes import scopes_match
 from pontifex_mcp.cache.redis_cache import Cache
 from pontifex_mcp.config import CoreSettings
@@ -57,6 +57,7 @@ __all__ = [
     "TokenExchange",
     "ToolError",
     "ToolResponse",
+    "anonymous_identity",
     "async_retry",
     "create_mcp_http_app",
     "register_openapi_tools",

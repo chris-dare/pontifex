@@ -155,20 +155,26 @@ def run_mcp_stdio(
     *,
     instructions: str = "",
     audit: AuditWriter | None = None,
+    identity: CallerIdentity | None = None,
 ) -> None:
     """Blocking stdio runner. Loads identity from settings into a ContextVar.
 
     `audit` is the resolved sink; stdio honors it (e.g. stdout audit). When
     omitted it defaults to `NoopAuditWriter`, preserving prior behavior.
+
+    `identity` overrides the stdio caller; the facade passes an anonymous
+    identity when no auth is configured. When omitted it's built from the
+    `stdio_*` settings, preserving prior behavior.
     """
-    identity = CallerIdentity(
-        key_id=settings.stdio_key_id,
-        owner_id=settings.stdio_owner_id,
-        owner_label=settings.stdio_owner_label,
-        scopes=[s.strip() for s in settings.stdio_scopes.split(",") if s.strip()],
-        rate_limit_rpm=9999,
-        transport="stdio",
-    )
+    if identity is None:
+        identity = CallerIdentity(
+            key_id=settings.stdio_key_id,
+            owner_id=settings.stdio_owner_id,
+            owner_label=settings.stdio_owner_label,
+            scopes=[s.strip() for s in settings.stdio_scopes.split(",") if s.strip()],
+            rate_limit_rpm=9999,
+            transport="stdio",
+        )
     set_stdio_caller(identity)
 
     mcp_server = FastMCP(name=f"{domain_name}-mcp", instructions=instructions)

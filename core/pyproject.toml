@@ -34,7 +34,11 @@ dependencies = [
     "pyjwt>=2.8.0",
     "pyyaml>=6.0",
     "cryptography>=42.0",
+    "typer>=0.12",
 ]
+
+[project.scripts]
+pontifex-mcp = "pontifex_mcp.cli:main"
 
 [project.urls]
 Homepage = "https://argonauts.chrisdare.me"

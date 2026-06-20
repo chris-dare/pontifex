@@ -11,7 +11,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 # via `.with_variant(..., "postgresql")` and falls back to a portable type on
 # SQLite. So Postgres DDL is unchanged (JSONB / text[] / INET / BIGINT) and
 # SQLite gets JSON / JSON / TEXT / INTEGER. See `pontifex_mcp.storage` for the
-# dialect detection and the SQLite `core` → default schema translation.
+# dialect detection and the SQLite `pontifex_mcp_core` → default schema translation.
 
 
 class Base(DeclarativeBase):
@@ -20,7 +20,7 @@ class Base(DeclarativeBase):
 
 class ApiKeyModel(Base):
     __tablename__ = "api_keys"
-    __table_args__ = {"schema": "core"}
+    __table_args__ = {"schema": "pontifex_mcp_core"}
 
     key_id: Mapped[str] = mapped_column(String, primary_key=True)
     key_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
@@ -40,7 +40,7 @@ class ApiKeyModel(Base):
 
 class AuditLogModel(Base):
     __tablename__ = "audit_log"
-    __table_args__ = {"schema": "core"}
+    __table_args__ = {"schema": "pontifex_mcp_core"}
 
     # BigInteger compiles to BIGINT on both dialects, but on SQLite a BIGINT
     # primary key is NOT the rowid alias, so it won't autoincrement. The sqlite
@@ -78,7 +78,7 @@ class AuditLogModel(Base):
 
 class DomainRegistryModel(Base):
     __tablename__ = "domain_registry"
-    __table_args__ = {"schema": "core"}
+    __table_args__ = {"schema": "pontifex_mcp_core"}
 
     domain: Mapped[str] = mapped_column(String, primary_key=True)
     display_name: Mapped[str] = mapped_column(String, nullable=False)

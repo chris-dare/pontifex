@@ -84,7 +84,7 @@ jobs:
           # Create schemas
           PGPASSWORD="${{ env.FLY_POSTGRES_PASSWORD }}" \
             psql -h 127.0.0.1 -p 15432 -U postgres -d "$DB_NAME" -c \
-            "CREATE SCHEMA IF NOT EXISTS core AUTHORIZATION $DB_USER;
+            "CREATE SCHEMA IF NOT EXISTS pontifex_mcp_core AUTHORIZATION $DB_USER;
              CREATE SCHEMA IF NOT EXISTS gse AUTHORIZATION $DB_USER;"
 
           kill %1 2>/dev/null || true

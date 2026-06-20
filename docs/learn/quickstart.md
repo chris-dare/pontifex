@@ -263,7 +263,7 @@ the environment. Need Postgres and Redis running? The quickest way to get both:
     async def setup():
         engine = create_async_engine(DB)
         async with engine.begin() as conn:
-            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS core"))
+            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS pontifex_mcp_core"))
             await conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(engine) as session:
             session.add(ApiKeyModel(

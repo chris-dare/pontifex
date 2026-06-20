@@ -37,27 +37,41 @@ def upgrade() -> None:
         sa.Column("response_ms", sa.Integer, nullable=False),
         sa.Column("error", sa.Text, nullable=True),
         sa.Column("ip_address", INET, nullable=True),
-        schema="core",
-    )
-    op.create_index("idx_audit_timestamp", "audit_log", [sa.text("timestamp DESC")], schema="core")
-    op.create_index(
-        "idx_audit_domain", "audit_log", ["domain", sa.text("timestamp DESC")], schema="core"
+        schema="pontifex_mcp_core",
     )
     op.create_index(
-        "idx_audit_key", "audit_log", ["key_id", sa.text("timestamp DESC")], schema="core"
+        "idx_audit_timestamp", "audit_log", [sa.text("timestamp DESC")], schema="pontifex_mcp_core"
     )
     op.create_index(
-        "idx_audit_owner", "audit_log", ["owner_id", sa.text("timestamp DESC")], schema="core"
+        "idx_audit_domain",
+        "audit_log",
+        ["domain", sa.text("timestamp DESC")],
+        schema="pontifex_mcp_core",
     )
     op.create_index(
-        "idx_audit_tool", "audit_log", ["tool_name", sa.text("timestamp DESC")], schema="core"
+        "idx_audit_key",
+        "audit_log",
+        ["key_id", sa.text("timestamp DESC")],
+        schema="pontifex_mcp_core",
+    )
+    op.create_index(
+        "idx_audit_owner",
+        "audit_log",
+        ["owner_id", sa.text("timestamp DESC")],
+        schema="pontifex_mcp_core",
+    )
+    op.create_index(
+        "idx_audit_tool",
+        "audit_log",
+        ["tool_name", sa.text("timestamp DESC")],
+        schema="pontifex_mcp_core",
     )
 
 
 def downgrade() -> None:
-    op.drop_index("idx_audit_tool", table_name="audit_log", schema="core")
-    op.drop_index("idx_audit_owner", table_name="audit_log", schema="core")
-    op.drop_index("idx_audit_key", table_name="audit_log", schema="core")
-    op.drop_index("idx_audit_domain", table_name="audit_log", schema="core")
-    op.drop_index("idx_audit_timestamp", table_name="audit_log", schema="core")
-    op.drop_table("audit_log", schema="core")
+    op.drop_index("idx_audit_tool", table_name="audit_log", schema="pontifex_mcp_core")
+    op.drop_index("idx_audit_owner", table_name="audit_log", schema="pontifex_mcp_core")
+    op.drop_index("idx_audit_key", table_name="audit_log", schema="pontifex_mcp_core")
+    op.drop_index("idx_audit_domain", table_name="audit_log", schema="pontifex_mcp_core")
+    op.drop_index("idx_audit_timestamp", table_name="audit_log", schema="pontifex_mcp_core")
+    op.drop_table("audit_log", schema="pontifex_mcp_core")

@@ -34,7 +34,7 @@ The foundation is solid; the capability set is deliberately focused and expands 
 │  • SaaS dashboard, enterprise admin panel, or config file       │
 │  • Manages users, billing, plan tiers                           │
 │  • Issues API keys with permission scopes                       │
-│  • Writes keys + scopes to core.api_keys                        │
+│  • Writes keys + scopes to pontifex_mcp_core.api_keys           │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ provisions API keys
                            ▼
@@ -72,7 +72,7 @@ The foundation is solid; the capability set is deliberately focused and expands 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-`pontifex-mcp` is a **library**, not a service. A server built with it authenticates callers, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the job of whatever provisions the keys above it. That upstream system writes API key records (with scopes) to `core.api_keys`; the server reads them and enforces the scopes.
+`pontifex-mcp` is a **library**, not a service. A server built with it authenticates callers, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the job of whatever provisions the keys above it. That upstream system writes API key records (with scopes) to `pontifex_mcp_core.api_keys`; the server reads them and enforces the scopes.
 
 ---
 
@@ -93,7 +93,7 @@ pontifex/
 ├── alembic/                                # DB migrations (split by schema)
 │   ├── alembic.ini
 │   ├── env.py                              # Runs core + domain migrations in order
-│   ├── core/                               # core schema migrations
+│   ├── core/                               # pontifex_mcp_core schema migrations
 │   │   └── versions/
 │   │       ├── 001_create_api_keys.py
 │   │       ├── 002_create_audit_log.py
@@ -1016,7 +1016,7 @@ All domains share a single Redis instance. Key collision is impossible because o
 
 `pontifex-mcp` authenticates callers and enforces permission scopes. It does not manage users, billing, or plans. It accepts **two credential types**, and both resolve to the same `CallerIdentity` and flow through the same scope enforcement:
 
-1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. `pontifex-mcp` is a read-only consumer of `core.api_keys`, which an upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions.
+1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. `pontifex-mcp` is a read-only consumer of `pontifex_mcp_core.api_keys`, which an upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions.
 2. **OAuth 2.1 access tokens, represented as JWTs** (RFC 9068; §11.9–11.13) — bearer tokens minted by an external OIDC provider (Auth0, Microsoft Entra, Clerk, Keycloak, …) for interactive MCP clients (Claude Desktop, Cursor, …) that log the end-user in through a browser. (OAuth itself permits opaque access tokens; this platform validates the JWT profile.)
 
 The middleware picks the path by token shape (§11.10) and emits an identical `CallerIdentity` either way, so scopes (§11.2), enforcement (§11.6), and audit (§12) are the same regardless of how the caller authenticated.
@@ -1055,12 +1055,12 @@ A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data
 
 ### 11.3 API Key Format and Storage
 
-**Key format:** `sk_<env>_` prefix + 32 random bytes, base62-encoded — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The upstream platform generates keys, stores the SHA-256 hash in `core.api_keys` along with the scopes, and shows the plaintext to the user once.
+**Key format:** `sk_<env>_` prefix + 32 random bytes, base62-encoded — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The upstream platform generates keys, stores the SHA-256 hash in `pontifex_mcp_core.api_keys` along with the scopes, and shows the plaintext to the user once.
 
 **Key record:**
 
 ```python
-# What gets stored in core.api_keys and cached in Redis
+# What gets stored in pontifex_mcp_core.api_keys and cached in Redis
 
 @dataclass
 class APIKeyRecord:
@@ -1195,7 +1195,7 @@ rate_limit_rpm: 9999
 
 ### 11.8 How the Upstream Platform Provisions Keys
 
-The upstream platform (your SaaS, an admin CLI, whatever) writes API key records to `core.api_keys`. This is the only integration point. `pontifex-mcp` doesn't care how the upstream decided what scopes to assign — whether that was a billing plan, a manual admin decision, or a config file.
+The upstream platform (your SaaS, an admin CLI, whatever) writes API key records to `pontifex_mcp_core.api_keys`. This is the only integration point. `pontifex-mcp` doesn't care how the upstream decided what scopes to assign — whether that was a billing plan, a manual admin decision, or a config file.
 
 ```python
 # Example: upstream platform creates a key (this code lives OUTSIDE pontifex-mcp)
@@ -1206,7 +1206,7 @@ import secrets
 raw_key = "sk_live_" + secrets.token_urlsafe(32)
 key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
 
-# Write to core.api_keys (direct DB insert, or via a provisioning API)
+# Write to pontifex_mcp_core.api_keys (direct DB insert, or via a provisioning API)
 await db.execute(
     insert(ApiKeyModel).values(
         key_id="key_abc123",
@@ -1313,7 +1313,7 @@ Because the resource server only ever validates the resulting JWT, `pontifex-mcp
 Shared across all domains. The `key_id` and `domain` columns scope records.
 
 ```sql
-CREATE TABLE core.audit_log (
+CREATE TABLE pontifex_mcp_core.audit_log (
     id              BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     domain          TEXT NOT NULL,              -- 'gse', 'gfi', 'ngx', etc.
@@ -1330,11 +1330,11 @@ CREATE TABLE core.audit_log (
     ip_address      INET
 );
 
-CREATE INDEX idx_audit_timestamp ON core.audit_log (timestamp DESC);
-CREATE INDEX idx_audit_domain    ON core.audit_log (domain, timestamp DESC);
-CREATE INDEX idx_audit_key       ON core.audit_log (key_id, timestamp DESC);
-CREATE INDEX idx_audit_owner     ON core.audit_log (owner_id, timestamp DESC);
-CREATE INDEX idx_audit_tool      ON core.audit_log (tool_name, timestamp DESC);
+CREATE INDEX idx_audit_timestamp ON pontifex_mcp_core.audit_log (timestamp DESC);
+CREATE INDEX idx_audit_domain    ON pontifex_mcp_core.audit_log (domain, timestamp DESC);
+CREATE INDEX idx_audit_key       ON pontifex_mcp_core.audit_log (key_id, timestamp DESC);
+CREATE INDEX idx_audit_owner     ON pontifex_mcp_core.audit_log (owner_id, timestamp DESC);
+CREATE INDEX idx_audit_tool      ON pontifex_mcp_core.audit_log (tool_name, timestamp DESC);
 ```
 
 ### 12.2 Retention
@@ -1436,14 +1436,14 @@ When the gateway rejects a request (429), the MCP server never sees it — the g
 
 ### 14.1 Principle
 
-Same isolation model as the codebase: one shared `core` schema for cross-cutting infrastructure tables, one schema per domain for domain-specific data. A bad migration in GFI cannot touch GSE's tables. All schemas live in a single PostgreSQL instance so cross-schema queries (e.g. "all audit records across all domains") remain simple joins.
+Same isolation model as the codebase: one shared `pontifex_mcp_core` schema for cross-cutting infrastructure tables, one schema per domain for domain-specific data. A bad migration in GFI cannot touch GSE's tables. All schemas live in a single PostgreSQL instance so cross-schema queries (e.g. "all audit records across all domains") remain simple joins.
 
 ### 14.2 Schema Layout
 
 ```
 mcp_platform (database)
 │
-├── core (schema)
+├── pontifex_mcp_core (schema)
 │   ├── api_keys                     ← Hashed keys → owner + scopes + rate limit
 │   ├── audit_log                    ← All tool invocations, all domains
 │   ├── domain_registry              ← Which domains are active + metadata
@@ -1464,11 +1464,11 @@ Note: there are no `users`, `tenants`, or `plans` tables. User management and bi
 ### 14.3 Core Schema DDL
 
 ```sql
-CREATE SCHEMA IF NOT EXISTS core;
+CREATE SCHEMA IF NOT EXISTS pontifex_mcp_core;
 
 -- api_keys: the only auth table pontifex-mcp owns
 -- Upstream platform (SaaS, admin CLI, config loader) writes rows here
-CREATE TABLE core.api_keys (
+CREATE TABLE pontifex_mcp_core.api_keys (
     key_id          TEXT PRIMARY KEY,            -- e.g. 'key_abc123'
     key_hash        TEXT NOT NULL UNIQUE,        -- SHA-256 of the plaintext key
     owner_id        TEXT NOT NULL,               -- Opaque ID from upstream (user, service account, etc.)
@@ -1481,11 +1481,11 @@ CREATE TABLE core.api_keys (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_api_keys_hash ON core.api_keys (key_hash);
-CREATE INDEX idx_api_keys_owner ON core.api_keys (owner_id);
+CREATE INDEX idx_api_keys_hash ON pontifex_mcp_core.api_keys (key_hash);
+CREATE INDEX idx_api_keys_owner ON pontifex_mcp_core.api_keys (owner_id);
 
 -- audit_log: every tool invocation across all domains
-CREATE TABLE core.audit_log (
+CREATE TABLE pontifex_mcp_core.audit_log (
     id              BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     domain          TEXT NOT NULL,
@@ -1502,14 +1502,14 @@ CREATE TABLE core.audit_log (
     ip_address      INET
 );
 
-CREATE INDEX idx_audit_timestamp ON core.audit_log (timestamp DESC);
-CREATE INDEX idx_audit_domain    ON core.audit_log (domain, timestamp DESC);
-CREATE INDEX idx_audit_key       ON core.audit_log (key_id, timestamp DESC);
-CREATE INDEX idx_audit_owner     ON core.audit_log (owner_id, timestamp DESC);
-CREATE INDEX idx_audit_tool      ON core.audit_log (tool_name, timestamp DESC);
+CREATE INDEX idx_audit_timestamp ON pontifex_mcp_core.audit_log (timestamp DESC);
+CREATE INDEX idx_audit_domain    ON pontifex_mcp_core.audit_log (domain, timestamp DESC);
+CREATE INDEX idx_audit_key       ON pontifex_mcp_core.audit_log (key_id, timestamp DESC);
+CREATE INDEX idx_audit_owner     ON pontifex_mcp_core.audit_log (owner_id, timestamp DESC);
+CREATE INDEX idx_audit_tool      ON pontifex_mcp_core.audit_log (tool_name, timestamp DESC);
 
 -- domain_registry: tracks active domains and their config metadata
-CREATE TABLE core.domain_registry (
+CREATE TABLE pontifex_mcp_core.domain_registry (
     domain          TEXT PRIMARY KEY,
     display_name    TEXT NOT NULL,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
@@ -1519,7 +1519,7 @@ CREATE TABLE core.domain_registry (
 );
 
 -- Optional: persisted circuit breaker state (skip initially)
-CREATE TABLE core.circuit_breaker_state (
+CREATE TABLE pontifex_mcp_core.circuit_breaker_state (
     domain          TEXT NOT NULL,
     adapter_name    TEXT NOT NULL,
     state           TEXT NOT NULL DEFAULT 'closed',
@@ -1592,9 +1592,9 @@ CREATE TABLE gse.data_quality_log (
 
 ### 14.5 Schema Permissions
 
-Two classes of database role for `pontifex-mcp` itself. The upstream platform writes to `core.api_keys` using its own credentials (outside this product's scope).
+Two classes of database role for `pontifex-mcp` itself. The upstream platform writes to `pontifex_mcp_core.api_keys` using its own credentials (outside this product's scope).
 
-- **Domain services** (`mcp_gse_service`, etc.): Read `core.api_keys` to resolve keys, write `core.audit_log`, full access to their own domain schema.
+- **Domain services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys, write `pontifex_mcp_core.audit_log`, full access to their own domain schema.
 - **Analytics** (`mcp_analytics`): Read-only on everything for dashboards and reporting.
 
 ```sql
@@ -1606,12 +1606,12 @@ CREATE ROLE mcp_gse_service LOGIN PASSWORD '...';
 CREATE ROLE mcp_analytics LOGIN PASSWORD '...';
 
 -- Core schema: domain services can read api_keys, write audit
-GRANT USAGE ON SCHEMA core TO mcp_gse_service;
-GRANT SELECT ON core.api_keys TO mcp_gse_service;
-GRANT UPDATE (last_used_at) ON core.api_keys TO mcp_gse_service;
-GRANT SELECT, INSERT ON core.audit_log TO mcp_gse_service;
-GRANT USAGE ON SEQUENCE core.audit_log_id_seq TO mcp_gse_service;
-GRANT SELECT ON core.domain_registry TO mcp_gse_service;
+GRANT USAGE ON SCHEMA pontifex_mcp_core TO mcp_gse_service;
+GRANT SELECT ON pontifex_mcp_core.api_keys TO mcp_gse_service;
+GRANT UPDATE (last_used_at) ON pontifex_mcp_core.api_keys TO mcp_gse_service;
+GRANT SELECT, INSERT ON pontifex_mcp_core.audit_log TO mcp_gse_service;
+GRANT USAGE ON SEQUENCE pontifex_mcp_core.audit_log_id_seq TO mcp_gse_service;
+GRANT SELECT ON pontifex_mcp_core.domain_registry TO mcp_gse_service;
 
 -- Domain isolation: each service owns only its schema
 GRANT ALL ON SCHEMA gse TO mcp_gse_service;
@@ -1621,8 +1621,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA gse GRANT ALL ON TABLES TO mcp_gse_service;
 -- Repeat the above pattern for each new domain
 
 -- Analytics: read-only everywhere
-GRANT USAGE ON SCHEMA core, gse TO mcp_analytics;
-GRANT SELECT ON ALL TABLES IN SCHEMA core, gse TO mcp_analytics;
+GRANT USAGE ON SCHEMA pontifex_mcp_core, gse TO mcp_analytics;
+GRANT SELECT ON ALL TABLES IN SCHEMA pontifex_mcp_core, gse TO mcp_analytics;
 ```
 
 ### 14.6 Alembic Migration Strategy
@@ -1704,7 +1704,7 @@ engine = create_async_engine(
 
 **Skip it initially.** The circuit breaker runs in-memory. When a container restarts, the breaker resets to `CLOSED` and rediscovers adapter availability by trying and failing (or succeeding). For a single container per domain, this is fine.
 
-**When to add it:** If you scale to multiple container replicas per domain, in-memory breakers diverge — replica A might have kwayisi marked `OPEN` while replica B still thinks it's `CLOSED` and keeps hammering a dead upstream. Persisting state to `core.circuit_breaker_state` (or Redis, which is faster for this) lets all replicas share a single view. Add this when you move to horizontal scaling.
+**When to add it:** If you scale to multiple container replicas per domain, in-memory breakers diverge — replica A might have kwayisi marked `OPEN` while replica B still thinks it's `CLOSED` and keeps hammering a dead upstream. Persisting state to `pontifex_mcp_core.circuit_breaker_state` (or Redis, which is faster for this) lets all replicas share a single view. Add this when you move to horizontal scaling.
 
 ---
 

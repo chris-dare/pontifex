@@ -1,6 +1,6 @@
 """Alembic env: multi-branch setup with one branch per schema.
 
-The `core` branch creates core.* tables. Each domain (currently just `gse`) has its
+The `core` branch creates pontifex_mcp_core.* tables. Each domain (currently just `gse`) has its
 own branch. `alembic upgrade heads` advances every branch. Branches are independent;
 a bad migration in `gse` does not touch `core`.
 """

@@ -1627,25 +1627,38 @@ GRANT SELECT ON ALL TABLES IN SCHEMA pontifex_mcp_core, gse TO mcp_analytics;
 
 ### 14.6 Alembic Migration Strategy
 
-Migrations split into two tracks that run in order: core first, then domain.
+Migrations split into two independent branches: `core` (the library's
+`pontifex_mcp_core` schema) and one per domain. `alembic upgrade heads` advances
+every branch.
+
+The `core` branch + `env.py` ship **inside the `pontifex-mcp` wheel**, so a
+`pip install` user runs `pontifex-mcp db upgrade` to create or update the schema
+(no source checkout). Domain branches stay in the monorepo as demos.
 
 ```
-alembic/
-├── alembic.ini
-├── env.py                          # Runs core migrations, then each domain
-├── core/
-│   └── versions/
-│       ├── 001_create_api_keys.py
-│       ├── 002_create_audit_log.py
-│       └── 003_create_domain_registry.py
+core/pontifex_mcp/migrations/        # shipped in the wheel
+├── alembic.ini                      # %(here)s paths; db upgrade loads this
+├── env.py                           # multi-branch; reads DATABASE_URL
+└── versions/
+    ├── 001_create_api_keys.py
+    ├── 002_create_audit_log.py
+    ├── 003_create_domain_registry.py
+    └── 004_add_audit_delegated_audience.py
+
+alembic/                             # monorepo: adds the demo domain branch
+├── alembic.ini                      # points at the in-package core branch + gse
 └── domains/
     └── gse/
         └── versions/
             ├── 001_create_symbols.py
             ├── 002_create_historical_prices.py
             └── 003_create_cached_eod_prices.py
-    # Future domains get their own folder here
+    # Future demo domains get their own folder here
 ```
+
+Two ways to run them: `pontifex-mcp db upgrade` (core only, from the installed
+wheel) and `alembic -c alembic/alembic.ini upgrade heads` (core + domains, from
+a source checkout — what the GSE deploy and CI use).
 
 Each migration explicitly targets its schema using the `schema=` parameter in `op.create_table()`:
 

@@ -6,7 +6,7 @@ services, a handful of environment variables, and a provider for interactive aut
 ## Stand up the infrastructure
 
 1.  **Postgres.** Provision Postgres 16 and run your migrations. The API-key and audit
-    tables live in a `core` schema.
+    tables live in a `pontifex_mcp_core` schema.
 2.  **Redis.** Provision Redis 7 for rate-limit counters and the response cache.
 3.  **The app.** Serve the app from `create_mcp_http_app` with any ASGI server
     (`uvicorn`), behind your load balancer or platform of choice.
@@ -69,7 +69,7 @@ ECS / …>.
 1. Build and run the ASGI app from create_mcp_http_app with uvicorn.
 2. Provision managed Postgres 16 and Redis 7, and wire DATABASE_URL
    (postgresql+asyncpg://…) and REDIS_URL as secrets — never in the image.
-3. Run `uv run alembic upgrade head` against the production database as a
+3. Run `pontifex-mcp db upgrade` against the production database as a
    release step.
 4. If interactive OAuth is in use, set the AUTH_* group and PUBLIC_BASE_URL to the
    deployment's real public URL.

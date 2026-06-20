@@ -31,8 +31,9 @@ A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) holding the lib
 
 ```
 core/pontifex_mcp/   The pontifex-mcp library — auth, scopes, audit, resilience, observability
+                     (incl. migrations/ — the core schema, shipped in the wheel)
 domains/gse/         Ghana Stock Exchange — a worked example domain built on the library
-alembic/             Database migrations (core schema + per-domain schemas)
+alembic/             Monorepo migration config (the in-package core branch + the gse demo branch)
 tests/               core + domain tests
 deploy/              Dockerfiles, fly.toml
 scripts/             Operational scripts (seed, export audit, health check)
@@ -46,7 +47,7 @@ scripts/             Operational scripts (seed, export audit, health check)
 git clone https://github.com/chris-dare/pontifex && cd pontifex
 docker compose up -d redis postgres   # infrastructure
 uv sync                               # install the workspace
-uv run alembic upgrade head           # run migrations
+uv run alembic -c alembic/alembic.ini upgrade heads   # run migrations (core + gse)
 uv run pytest                         # tests
 ```
 

@@ -111,8 +111,9 @@ pontifex/
 ├── pyproject.toml     # Virtual workspace root (uv workspace)
 ├── uv.lock            # Single lockfile, committed
 ├── core/pontifex_mcp/     # The pontifex-mcp library (published to PyPI) — auth, cache, audit, circuit breaker
+│                      #   incl. migrations/ (core schema, shipped in the wheel; `pontifex-mcp db upgrade`)
 ├── domains/gse/gse_mcp/  # GSE demo domain — tools, adapters, models
-├── alembic/           # Migrations: alembic/core/ + alembic/domains/gse/
+├── alembic/           # Monorepo migration config: in-package core branch + alembic/domains/gse/
 ├── tests/             # tests/core/ + tests/domains/gse/
 ├── deploy/            # Dockerfiles, fly.toml
 └── scripts/           # seed_db, export_audit_logs, health_check

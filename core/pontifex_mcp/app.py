@@ -276,7 +276,12 @@ class PontifexMCP(FastMCP):
             self._require_auth_env(settings)
 
         app = build_http_app(
-            self._domain, self, settings, self._readiness, allow_anonymous=open_mode
+            self._domain,
+            self,
+            settings,
+            self._readiness,
+            allow_anonymous=open_mode,
+            enable_api_keys=isinstance(self._auth, ApiKeyAuth),
         )
         host = self._http_host(settings, open_mode=open_mode, network_optout=network_optout)
         uvicorn.run(app, host=host, port=settings.port, log_level=settings.log_level.lower())

@@ -5,8 +5,9 @@ but the discovery endpoints touch neither, so they're exercised here with a
 TestClient over a fully-built app.
 """
 
+from mcp.server.fastmcp import FastMCP
 from pontifex_mcp.config import CoreSettings
-from pontifex_mcp.server_factory import create_mcp_app, create_mcp_http_app
+from pontifex_mcp.server_factory import build_http_app, create_mcp_app, create_mcp_http_app
 from starlette.testclient import TestClient
 
 
@@ -77,3 +78,25 @@ def test_metadata_fallback_ignores_spoofed_forwarded_host():
         {"X-Forwarded-Proto": "https", "X-Forwarded-Host": "attacker.example"},
     )
     assert "attacker.example" not in body["resource"]
+
+
+def test_jwt_server_with_database_url_does_not_enable_api_keys():
+    """A JwtAuth server may set DATABASE_URL (e.g. for Postgres audit). That must
+    not silently turn on API-key auth — `enable_api_keys=False` leaves the
+    resolver unwired, so an sk_ token gets "not configured", not a key lookup."""
+    settings = _settings()  # carries both DATABASE_URL and AUTH_JWKS_URL
+    mcp_server = FastMCP(name="gse-mcp", stateless_http=True, json_response=True)
+
+    async def health() -> dict:
+        return {"ok": True}
+
+    app = build_http_app("gse", mcp_server, settings, health, enable_api_keys=False)
+    with TestClient(app) as client:
+        resp = client.get(
+            "/mcp",
+            headers={"Authorization": "Bearer sk_live_seeded"},  # gitleaks:allow
+        )
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["error_code"] == "auth_failed"
+    assert "not configured" in body["message"]

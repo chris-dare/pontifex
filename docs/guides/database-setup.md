@@ -56,11 +56,11 @@ export REDIS_URL=redis://localhost:6379/0
 
 ## Step 3: create the tables
 
-Pontifex's API-key and audit tables live in a `core` schema. Create them with the
-migrations:
+Pontifex's API-key and audit tables live in a `pontifex_mcp_core` schema. Create
+them with the bundled migrations:
 
 ```bash
-uv run alembic upgrade head
+pontifex-mcp db upgrade
 ```
 
 ## Verify it works
@@ -89,7 +89,7 @@ Same two variables, real services:
 
 1. Provision **managed Postgres 16** and **Redis 7** (any cloud will do).
 2. Set `DATABASE_URL` and `REDIS_URL` as secrets in your platform, never in code.
-3. Run `uv run alembic upgrade head` against the production database once, as part of
+3. Run `pontifex-mcp db upgrade` against the production database once, as part of
    your release.
 
 Nothing about the infrastructure is Pontifex-specific. Full deployment flow:
@@ -110,8 +110,8 @@ Compose.
 3. Export:
    DATABASE_URL=postgresql+asyncpg://mcp:mcp@localhost:5432/mcp_platform
    REDIS_URL=redis://localhost:6379/0
-4. Run the migrations: `uv run alembic upgrade head`.
-5. Verify: the `core` schema tables exist in Postgres, and `redis-cli ping`
+4. Run the migrations: `pontifex-mcp db upgrade`.
+5. Verify: the `pontifex_mcp_core` schema tables exist in Postgres, and `redis-cli ping`
    returns PONG.
 
 Report any failure with the exact command output.

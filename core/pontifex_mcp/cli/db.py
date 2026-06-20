@@ -4,9 +4,10 @@ import asyncio
 from importlib.resources import as_file, files
 
 import typer
+from sqlalchemy.exc import SQLAlchemyError
 
 from pontifex_mcp.cli._db import resolve_database_url
-from pontifex_mcp.cli._output import print_json
+from pontifex_mcp.cli._output import ExitCode, fail, print_json
 from pontifex_mcp.storage import (
     create_db_engine,
     ensure_sqlite_schema,
@@ -65,10 +66,20 @@ def upgrade(
     url = normalize_db_url(resolve_database_url())  # clean exit 2 if unset
     backend = "sqlite" if is_sqlite(url) else "postgres"
 
-    if backend == "sqlite":
-        _upgrade_sqlite(url)
-    else:
-        _upgrade_postgres()
+    try:
+        if backend == "sqlite":
+            _upgrade_sqlite(url)
+        else:
+            _upgrade_postgres()
+    except (OSError, SQLAlchemyError) as exc:
+        # Connection refused, bad credentials, missing CREATE privilege, etc.
+        # Surface a one-line actionable error and exit 2 (infra), not a raw
+        # traceback. The URL is omitted on purpose — it may carry a password.
+        fail(
+            f"Could not reach or migrate the database: {exc}\n"
+            "Check DATABASE_URL points at a running database and the role can create schemas.",
+            ExitCode.INFRA_ERROR,
+        )
 
     if json_output:
         print_json({"status": "ok", "action": "upgrade", "backend": backend})

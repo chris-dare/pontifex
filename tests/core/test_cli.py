@@ -88,6 +88,23 @@ def test_db_upgrade_sqlite_creates_tables(tmp_path, monkeypatch):
     assert '"backend": "sqlite"' in again.output
 
 
+def test_db_upgrade_connection_error_exits_infra_not_traceback(monkeypatch):
+    """An unreachable/unauthorized database surfaces a clean exit-2 message, not
+    a raw traceback — the command's infra-error contract."""
+    from sqlalchemy.exc import OperationalError
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://x:x@127.0.0.1:5999/x")
+
+    def _boom() -> None:
+        raise OperationalError("connect", {}, Exception("connection refused"))
+
+    monkeypatch.setattr("pontifex_mcp.cli.db._upgrade_postgres", _boom)
+
+    result = runner.invoke(app, ["db", "upgrade"])
+    assert result.exit_code == int(ExitCode.INFRA_ERROR)
+    assert "Could not reach or migrate the database" in result.output
+
+
 def test_async_command_preserves_signature_and_runs():
     """The async adapter must keep the wrapped signature so Typer still parses
     arguments, and must run the coroutine to completion. #87/#88 depend on this."""

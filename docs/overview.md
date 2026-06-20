@@ -1,4 +1,4 @@
-# Pontifex MCP
+# Overview
 
 **Enterprise-grade MCP servers, governed by default.**
 
@@ -8,27 +8,26 @@ tool call. It builds on the official
 
 <div class="px-cta" markdown>
 [Quickstart](learn/quickstart.md){ .md-button .md-button--primary }
-[Why Pontifex](why.md){ .md-button }
 </div>
 
-## The problem
+## Why Pontifex
 
-An AI agent can do real work once it reaches your systems. Connecting it to your orders
-API or your customer database means letting it call production, and your security team
-will not approve that until they can answer four questions. Who is calling? What can
-they touch? How often? And what did they do?
+Your APIs and internal systems were built for your applications and employees, not for
+an autonomous agent. Point an agent at them and your security team asks four questions:
 
-[MCP](https://modelcontextprotocol.io), the open standard agents like Claude use to
-call tools, standardizes the connection. It says nothing about that control. So the
-pilot works in a demo, then stalls at a security review it cannot pass.
+> Who is calling, what can they touch, how often, and what did they do?
+
+[MCP](https://modelcontextprotocol.io), the protocol agents use to call tools,
+standardizes the connection and leaves the control to you. So your team builds a strong
+pilot, and it stalls at the first system that holds real data.
+
+Pontifex answers those four questions, so you can ship the pilot.
 
 ## What Pontifex does
 
-Pontifex turns your existing APIs, data stores, and internal services into tools an
-agent can call. It authenticates every call, checks the caller's scopes, enforces a
-rate limit, and writes an audit record.
-
-Your AI project ships to production, and your data stays in your environment.
+Pontifex wraps your existing APIs and services in governed MCP tools. It authenticates
+every request and writes an audit record before any handler runs. You ship to
+production; your data stays in your environment.
 
 ```mermaid
 flowchart TB
@@ -47,10 +46,15 @@ flowchart TB
     adapters --> systems["Your systems<br/>APIs, databases, services"]
 ```
 
-Pontifex builds on the official MCP Python SDK and uses open protocols throughout:
-OAuth 2.1, OpenAPI, and standard JWTs. You run it on the infrastructure you already
-have, pair it with any AI vendor, and remove it whenever you want. Your tools stay
-standard MCP underneath.
+## What it changes
+
+| Without a governance layer | With Pontifex |
+| --- | --- |
+| An agent's access is all-or-nothing | You scope each caller to the exact tools they need |
+| "Trust the agent" | You trust a verified identity on every call |
+| No record of what the agent did | A full audit row per call: caller, tool, data source, latency |
+| One slow upstream stalls everything | Rate limiting, failover, and circuit breaking contain it |
+| Your data flows through a vendor | You self-host; nothing leaves your environment |
 
 ## What you get
 
@@ -58,7 +62,7 @@ standard MCP underneath.
 
 -   :material-shield-check:{ .lg .middle } __Nothing runs unauthenticated__
 
-    Every call carries a verified identity, an OAuth 2.1 JWT or an `sk_…` API key.
+    Every call carries a verified identity: an OAuth 2.1 JWT or an `sk_…` API key.
     Pontifex checks it against any OIDC provider before your handler runs.
 
 -   :material-key-chain:{ .lg .middle } __Least privilege, enforced__
@@ -88,15 +92,52 @@ standard MCP underneath.
 
 </div>
 
+## Pontifex vs. the MCP SDK alone
+
+The SDK gives you a server. Pontifex makes it safe to run on real systems.
+
+| | MCP Python SDK | Pontifex MCP |
+| --- | --- | --- |
+| Define and serve tools | ✅ | ✅ (built on it) |
+| Authenticate callers | — | ✅ API keys + OAuth 2.1 |
+| Per-caller scopes | — | ✅ `domain:resource:action` |
+| Audit log | — | ✅ every call, to Postgres |
+| Rate limiting | — | ✅ per caller |
+| Resilience (failover, breakers) | — | ✅ |
+| Onboard an OpenAPI API with no code | — | ✅ |
+
+## Built on open standards
+
+Pontifex does not ask you to bet on a platform. It builds on the official MCP Python
+SDK and uses OAuth 2.1 and standard JWTs for identity, so you bring any OIDC provider:
+Auth0, Entra, Clerk, or Keycloak. It reads OpenAPI to onboard existing systems and
+speaks RFC 9728 and RFC 8693 for discovery and token exchange.
+
+Pair it with any AI vendor and run it anywhere you run Python. Drop the dependency to
+remove it; your tools stay standard MCP underneath.
+
+## You hold the data
+
+Pontifex is a library you run, not a service you send data to.
+
+It sits inside your environment, between the agent and your systems. No third party
+sits in the request path. You supply the database and credentials from your own
+infrastructure. Pontifex hardcodes nothing and phones nothing home.
+
+That is what lets your security and compliance teams sign off on "we are connecting AI
+to customer data."
+
+## When to skip it
+
+If you are shipping a single public tool over non-sensitive data, use the MCP SDK on
+its own. You do not need auth or an audit trail yet, and adding them buys you nothing.
+
+Pontifex pays off once a real system and real identity are involved. At that point,
+unauthenticated access is no longer acceptable.
+
 ## Where to next
 
 <div class="grid cards" markdown>
-
--   __Evaluating it?__
-
-    The case for a governance layer, and when to skip one.
-
-    [Why Pontifex](why.md)
 
 -   __Building with it?__
 
@@ -108,7 +149,19 @@ standard MCP underneath.
 
     The model behind "safe to point at production."
 
-    [Security](concepts/security.md)
+    [Security model](concepts/security.md)
+
+-   __Onboarding an existing API?__
+
+    Governed tools from an OpenAPI spec, no handler code.
+
+    [Connect an API](learn/connect-an-api.md)
+
+-   __Sizing the architecture?__
+
+    How a request travels through auth, scopes, and audit.
+
+    [How a request flows](concepts/request-path.md)
 
 </div>
 

@@ -1,14 +1,11 @@
 # Connect an existing API
 
-The fastest way to govern a system is to write no code for it.
+If a system already has an OpenAPI 3.x spec, you don't write handler code for it.
+Point Pontifex at the spec, list the operations you want to expose, and it wraps them
+as governed MCP tools: authenticated, scoped, and audited the same as anything you
+write by hand.
 
-If the system you're exposing already has an **OpenAPI 3.x spec**, a connector reads
-the spec and generates the tools. Each one wraps in the same `tool_runtime` as a
-hand-written tool, with the same scope check, audit row, and error envelope.
-
-Pontifex governs a generated tool the same way it governs one you write by hand.
-
-## One config file
+## One config file, zero handlers
 
 ```yaml
 # connectors.yaml
@@ -24,17 +21,18 @@ connectors:
       - GET /orders/{order_id}
 ```
 
-Point the server at it and start it. No domain module required.
+Point the server at it before you start:
 
 ```bash
 export PONTIFEX_CONNECTORS_CONFIG=/app/connectors.yaml
+python main.py
 ```
 
-Every included operation is now an authenticated, scoped, audited MCP tool.
+Open [MCP Inspector](https://github.com/modelcontextprotocol/inspector) and the
+generated tools appear under Tools, ready to call. No server code written.
 
 !!! tip
-
-    Want to mix generated and hand-written tools in one domain? The same generator is
+    Want to mix generated and hand-written tools in one server? The same generator is
     available in code as `register_openapi_tools`. See the
     [API reference](../reference/python-api.md#connectors).
 
@@ -43,8 +41,7 @@ Every included operation is now an authenticated, scoped, audited MCP tool.
 Exposure is **opt-in per operation.** It fails closed.
 
 A spec with 200 operations exposes *zero* of them until you list each one. When the
-upstream team adds endpoints, your MCP server doesn't change until someone opts in. A
-careless upstream changes nothing you expose.
+upstream team adds endpoints, your MCP server doesn't change until someone opts in.
 
 Misconfiguration never gives you a silently different exposure. The server refuses to
 boot:
@@ -53,7 +50,7 @@ boot:
 | --- | --- |
 | `- GET /orders` (exists in spec) | tool registered |
 | `- GET /orers` (typo) | refuses to start, lists the operations the spec *does* have |
-| `- POST /orders` without `allow_mutations: true` | refuses to start; mutating verbs need explicit enablement |
+| `- POST /orders` without `allow_mutations: true` | refuses to start; mutating verbs need explicit opt-in |
 | `- POST /orders` with `allow_mutations: true` | tool registered; callers need the `write` scope |
 | *(operation in spec, not in `include`)* | not a tool; agents can't see or call it |
 
@@ -74,10 +71,9 @@ call reaches the downstream API.
 
 ## Naming the tools
 
-A tool is named `{domain}_{operation_id}`, snake-cased.
-
-Specs with machine-generated operationIds (FastAPI's defaults, for example) produce
-noisy names. Override them per operation:
+Tools are named `{domain}_{operation_id}`, snake-cased. Specs with machine-generated
+operationIds (FastAPI's defaults, for example) produce noisy names. Override them per
+operation:
 
 ```yaml
     names:
@@ -90,25 +86,25 @@ Only the operations you key change. Everything else keeps its spec-derived name.
 
 ## Verify it works
 
-Start the server with the config set, and check three things:
+Start the server and check three things:
 
 ```bash
 export PONTIFEX_CONNECTORS_CONFIG=/app/connectors.yaml
-# start your server, then:
+python main.py
+# then:
 curl http://localhost:8080/health/ready
 ```
 
-- **It booted.** A typo in `include` or `names` refuses to start, so a clean boot means
-  every allowlisted operation resolved.
+- **It booted.** A typo in `include` or `names` refuses to start, so a clean boot
+  means every allowlisted operation resolved.
 - **The connector is healthy.** `/health/ready` lists it as `connector:<domain>` (e.g.
   `connector:orders`).
-- **The tool is governed.** Calling it needs the derived scope, `orders:orders:read`
-  for `GET /orders`. Pontifex rejects a caller without it before it touches the
-  downstream.
+- **The tool is governed.** Calling it without `orders:orders:read` returns a `403`
+  before it touches the downstream.
 
 ## Hand it to a coding agent
 
-Have a spec but don't want to hand-write the allowlist? Paste this to a coding agent,
+Have a spec but don't want to hand-write the allowlist? Paste this to a coding agent
 with your spec URL and the operations you want exposed:
 
 ```text
@@ -123,22 +119,17 @@ Create a Pontifex connectors.yaml for the OpenAPI spec at <SPEC_URL>.
 - For any operation with a noisy machine-generated operationId, add a `names:`
   override to give the tool a clean name.
 
-Then tell me to set PONTIFEX_CONNECTORS_CONFIG to the file's path, and which scope
-each generated tool will require.
+Then tell me which scope each generated tool will require.
 ```
 
 ## What's next
 
-You've exposed an API. Two things usually follow:
-
-- **The backend needs to know *which* user is calling.** That's downstream
-  authentication: service credentials vs. OAuth token exchange. See
-  [Authenticate to your backend](../guides/downstream-auth.md).
+- **The backend needs to know which user is calling.** Service credentials vs. OAuth
+  token exchange: see [Authenticate to your backend](../guides/downstream-auth.md).
 - **You want to know it stays up.** Connector calls are circuit-broken and surface in
-  `/health/ready`. See [Resilient adapters](../guides/resilient-adapters.md).
+  `/health/ready`: see [Resilient adapters](../guides/resilient-adapters.md).
 
 !!! note "v1 limits"
-
     Path and query parameters and `application/json` request bodies are supported.
     Header and cookie parameters are ignored. `$ref` resolution is local (`#/…`) only.
     Responses are not cached (`cache_hit` is always `false`).

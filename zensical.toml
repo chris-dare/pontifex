@@ -8,7 +8,6 @@ repo_name = "chris-dare/pontifex"
 
 nav = [
   { "Home" = "index.md" },
-  { "Why Pontifex" = "why.md" },
   { "Overview" = "overview.md" },
   { "Learn" = [
     { "Quickstart" = "learn/quickstart.md" },

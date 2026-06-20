@@ -7,13 +7,18 @@ release-process rule, so it lives here rather than per-command.
 
 import json as _json
 from enum import IntEnum
-from typing import Any
+from typing import Any, NoReturn
 
 import typer
 
 
 class ExitCode(IntEnum):
-    """Stable process exit codes. Scripts and CI branch on these."""
+    """Stable process exit codes. Scripts and CI branch on these.
+
+    Note ``INFRA_ERROR`` is ``2``, which coincides with click's own usage-error
+    code (a bad/missing command also exits ``2``). Both mean "couldn't run", so
+    don't treat ``2`` as uniquely "infra" when branching in CI.
+    """
 
     OK = 0
     USER_ERROR = 1  # bad arguments, not found, conflict
@@ -26,11 +31,12 @@ def print_json(data: Any) -> None:
     typer.echo(_json.dumps(data, indent=2, default=str))
 
 
-def fail(message: str, code: ExitCode = ExitCode.USER_ERROR) -> "typer.Exit":
+def fail(message: str, code: ExitCode = ExitCode.USER_ERROR) -> NoReturn:
     """Print ``message`` to stderr and exit with ``code``.
 
-    Returns the ``typer.Exit`` so callers can ``raise fail(...)`` and keep the
-    control-flow obvious to readers and type checkers.
+    Raises ``typer.Exit`` directly (return type ``NoReturn``), so a command body
+    can call ``fail(...)`` and the type checker knows execution stops there — no
+    way to forget a ``raise`` and silently continue past an intended exit.
     """
     typer.echo(message, err=True)
-    return typer.Exit(code=int(code))
+    raise typer.Exit(code=int(code))

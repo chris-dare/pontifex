@@ -22,7 +22,7 @@ def resolve_database_url() -> str:
     """Return ``DATABASE_URL`` from the environment, or exit 2 if unset."""
     url = os.environ.get("DATABASE_URL")
     if not url:
-        raise fail(
+        fail(
             "DATABASE_URL is not set. Point it at a SQLite file "
             "(sqlite+aiosqlite:///pontifex.db) or a Postgres URL.",
             ExitCode.INFRA_ERROR,

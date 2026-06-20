@@ -56,6 +56,38 @@ def test_resolve_database_url_present_returns_it(monkeypatch):
     assert resolve_database_url() == "sqlite+aiosqlite:///x.db"
 
 
+def test_db_upgrade_missing_database_url_exits_infra(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    result = runner.invoke(app, ["db", "upgrade"])
+    assert result.exit_code == int(ExitCode.INFRA_ERROR)
+
+
+def test_db_upgrade_sqlite_creates_tables(tmp_path, monkeypatch):
+    """On a SQLite DATABASE_URL, `db upgrade` creates the platform tables
+    directly (the Postgres-shaped migrations can't run there) and is idempotent."""
+    import sqlite3
+
+    db_path = tmp_path / "pontifex.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
+
+    result = runner.invoke(app, ["db", "upgrade"])
+    assert result.exit_code == 0, result.output
+    assert "up to date" in result.output
+
+    tables = {
+        row[0]
+        for row in sqlite3.connect(db_path)
+        .execute("SELECT name FROM sqlite_master WHERE type='table'")
+        .fetchall()
+    }
+    assert {"api_keys", "audit_log", "domain_registry"} <= tables
+
+    # Idempotent: a second run is a clean no-op.
+    again = runner.invoke(app, ["db", "upgrade", "--json"])
+    assert again.exit_code == 0
+    assert '"backend": "sqlite"' in again.output
+
+
 def test_async_command_preserves_signature_and_runs():
     """The async adapter must keep the wrapped signature so Typer still parses
     arguments, and must run the coroutine to completion. #87/#88 depend on this."""

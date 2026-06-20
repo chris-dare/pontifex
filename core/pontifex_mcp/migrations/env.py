@@ -1,7 +1,12 @@
 """Alembic env: multi-branch setup with one branch per schema.
 
-The `core` branch creates pontifex_mcp_core.* tables. Each domain (currently just `gse`) has its
-own branch. `alembic upgrade heads` advances every branch. Branches are independent;
+Shipped in the wheel and shared by two contexts:
+- `pontifex-mcp db upgrade` runs only the `core` branch packaged alongside it
+  (the `pontifex_mcp_core.*` tables) — the library's schema.
+- The monorepo's `alembic/alembic.ini` points `version_locations` at this same
+  `core` branch plus the demo `gse` branch, so contributors get both.
+
+`alembic upgrade heads` advances every branch present. Branches are independent;
 a bad migration in `gse` does not touch `core`.
 """
 
@@ -51,7 +56,10 @@ def do_run_migrations(connection) -> None:
 
 async def run_migrations_online() -> None:
     section = config.get_section(config.config_ini_section, {})
-    section["sqlalchemy.url"] = config.get_main_option("sqlalchemy.url")
+    url = config.get_main_option("sqlalchemy.url")
+    if url is None:
+        raise RuntimeError("No database URL configured. Set DATABASE_URL.")
+    section["sqlalchemy.url"] = url
     engine = async_engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)

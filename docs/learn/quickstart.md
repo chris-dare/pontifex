@@ -249,22 +249,24 @@ the environment. Need Postgres and Redis running? The quickest way to get both:
     export REDIS_URL=redis://localhost:6379
     ```
 
-    Create the schema and a test API key (run this once):
+    Create the schema with the bundled migrations:
+
+    ```bash
+    pontifex-mcp db upgrade
+    ```
+
+    Then seed a test API key (run this once):
 
     ```python title="setup_dev_key.py"
     import asyncio, hashlib, os
-    from pontifex_mcp.models.db import Base, ApiKeyModel
+    from pontifex_mcp.models.db import ApiKeyModel
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from sqlalchemy import text
 
     DB = os.environ["DATABASE_URL"]
     KEY = "sk_dev_test"
 
-    async def setup():
+    async def seed():
         engine = create_async_engine(DB)
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS pontifex_mcp_core"))
-            await conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(engine) as session:
             session.add(ApiKeyModel(
                 key_id="key_dev",
@@ -279,7 +281,7 @@ the environment. Need Postgres and Redis running? The quickest way to get both:
         print(f"Key created: {KEY}")
         await engine.dispose()
 
-    asyncio.run(setup())
+    asyncio.run(seed())
     ```
 
     ```bash
@@ -294,7 +296,8 @@ the environment. Need Postgres and Redis running? The quickest way to get both:
     - **Redis**: [Upstash](https://upstash.com) or [Redis Cloud](https://redis.com/try-free/)
       both have free tiers. Use the `redis://` or `rediss://` URL directly.
 
-    Run `setup_dev_key.py` from the Docker tab above, substituting your managed URLs.
+    Run `pontifex-mcp db upgrade` then `setup_dev_key.py` from the Docker tab above,
+    substituting your managed URLs.
 
 ```bash
 DATABASE_URL=postgresql+asyncpg://… REDIS_URL=redis://… python main.py

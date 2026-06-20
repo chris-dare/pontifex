@@ -97,7 +97,7 @@ jobs:
           flyctl proxy 15432:5432 -a pontifex-mcp-db &
           sleep 4
 
-          # alembic/env.py reads DATABASE_URL — point it at the local proxy
+          # the migration env reads DATABASE_URL — point it at the local proxy
           export DATABASE_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@127.0.0.1:15432/$DB_NAME"
           uv run alembic -c alembic/alembic.ini upgrade heads
 

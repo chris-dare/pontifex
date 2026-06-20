@@ -42,10 +42,14 @@ logger = structlog.get_logger(__name__)
 
 
 class ApiKeyAuth:
-    """Enable API-key auth, reading `DATABASE_URL` + `REDIS_URL` from the env.
+    """Enable API-key auth, reading `DATABASE_URL` (and optional `REDIS_URL`).
 
-    OAuth/JWT also activates when `AUTH_JWKS_URL` is set. A marker — the infra
-    URLs come from the environment so laptop → prod is a config change.
+    `DATABASE_URL` is the key store: a SQLite file for the zero-infra floor
+    (`sqlite+aiosqlite:///pontifex.db`) or Postgres for production. `REDIS_URL`
+    is optional — with it, key lookups are cached and per-caller rate limiting
+    is enforced; without it, the store is read directly and rate limiting is
+    off (logged at startup). A marker: the infra URLs come from the environment
+    so laptop → prod is a config change.
     """
 
 
@@ -280,8 +284,9 @@ class PontifexMCP(FastMCP):
     def _require_auth_env(self, settings: CoreSettings) -> None:
         """Fail fast if the configured auth backend's env vars are missing."""
         if isinstance(self._auth, ApiKeyAuth):
+            # REDIS_URL is optional: without it the key store is read directly
+            # (SQLite or Postgres) and rate limiting is disabled (see AuthMiddleware).
             require_url(settings.database_url, "DATABASE_URL", "ApiKeyAuth")
-            require_url(settings.redis_url, "REDIS_URL", "ApiKeyAuth")
         elif isinstance(self._auth, JwtAuth):
             require_url(settings.auth_jwks_url, "AUTH_JWKS_URL", "JwtAuth")
 

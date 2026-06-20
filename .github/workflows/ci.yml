@@ -116,7 +116,7 @@ jobs:
         run: |
           KEY_HASH=$(echo -n "sk_live_ci_smoke" | sha256sum | cut -d' ' -f1)
           docker compose exec -T postgres psql -U mcp -d mcp_platform -c "
-            INSERT INTO core.api_keys (key_id, key_hash, owner_id, owner_label, scopes, rate_limit_rpm, is_active)
+            INSERT INTO pontifex_mcp_core.api_keys (key_id, key_hash, owner_id, owner_label, scopes, rate_limit_rpm, is_active)
             VALUES ('key_ci', '${KEY_HASH}', 'usr_ci', 'CI smoke test', ARRAY['gse:*:*'], 120, true)
             ON CONFLICT (key_id) DO NOTHING;
           "

@@ -23,18 +23,21 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import jwt
 import structlog
-from authlib.jose import JsonWebKey, JsonWebToken
-from authlib.jose.errors import JoseError
+from jwt import PyJWK, PyJWKSet
 
 from pontifex_mcp.auth.identity import CallerIdentity
 
 _log = structlog.get_logger(__name__)
 
-# Client-facing message for any token rejection.  Specific reasons (bad
-# signature, wrong issuer, expired, …) are logged server-side, not returned,
-# so we don't hand an attacker a validation oracle.
+# Client-facing message for any token rejection.  Specific reasons are logged
+# server-side so we don't hand an attacker a validation oracle.
 _INVALID_TOKEN_MSG = "Invalid or expired token."
+
+# Asymmetric algorithms only — HMAC excluded so a stolen JWKS cannot be used
+# to forge HS256 tokens.
+_ALLOWED_ALGORITHMS = frozenset(["RS256", "RS384", "RS512", "ES256", "ES384", "PS256"])
 
 
 class JWTValidationError(Exception):
@@ -46,7 +49,7 @@ class JWTValidationError(Exception):
 
 @dataclass
 class _CachedJWKS:
-    keyset: Any  # authlib.jose.JsonWebKey-like (KeySet)
+    keyset: PyJWKSet
     fetched_at: float
 
 
@@ -79,10 +82,7 @@ class JWTValidator:
         self._cache: _CachedJWKS | None = None
         self._cache_lock = asyncio.Lock()
         self._transport = transport
-        # RS256 is the OIDC default; ES256 and PS256 are also common.  We
-        # accept all asymmetric algorithms but never the HMAC family — those
-        # would let a stolen JWKS doc be used to forge tokens.
-        self._jwt = JsonWebToken(["RS256", "RS384", "RS512", "ES256", "ES384", "PS256"])
+        self._algorithms = list(_ALLOWED_ALGORITHMS)
 
     async def aclose(self) -> None:
         if self._owns_http:
@@ -94,33 +94,19 @@ class JWTValidator:
         Raises :class:`JWTValidationError` if the token is invalid for any
         reason (bad signature, expired, wrong issuer/audience, malformed).
         """
-        claims_options = {
-            "iss": {"essential": True, "value": self.issuer},
-            "aud": {"essential": True, "value": self.audience},
-            "exp": {"essential": True},
-            "sub": {"essential": True},
-        }
-
-        keyset = await self._get_keyset(force_refresh=False)
         try:
-            claims = self._jwt.decode(raw_token, keyset, claims_options=claims_options)
-        except (JoseError, ValueError):
-            # Either the signature didn't verify (rotated key) or the kid was
-            # not in the cached keyset.  Refetch JWKS and retry once.
-            keyset = await self._get_keyset(force_refresh=True)
-            try:
-                claims = self._jwt.decode(raw_token, keyset, claims_options=claims_options)
-            except (JoseError, ValueError) as exc:
-                _log.warning("jwt_signature_invalid", error=str(exc))
-                raise JWTValidationError(_INVALID_TOKEN_MSG) from exc
-
-        # `validate()` runs the claims_options checks plus standard time
-        # validation (exp, nbf, iat).
-        try:
-            claims.validate(now=int(time.time()), leeway=0)
-        except JoseError as exc:
-            _log.warning("jwt_claims_invalid", error=str(exc))
+            header = jwt.get_unverified_header(raw_token)
+        except jwt.InvalidTokenError as exc:
+            _log.warning("jwt_malformed", error=str(exc))
             raise JWTValidationError(_INVALID_TOKEN_MSG) from exc
+
+        alg = header.get("alg", "")
+        if alg not in _ALLOWED_ALGORITHMS:
+            _log.warning("jwt_disallowed_alg", alg=alg)
+            raise JWTValidationError(_INVALID_TOKEN_MSG)
+
+        kid = header.get("kid")
+        claims = await self._resolve_and_decode(raw_token, kid)
 
         scopes = _extract_scopes(claims, self.scopes_claim)
         owner_id = str(claims.get("sub") or "")
@@ -131,8 +117,8 @@ class JWTValidator:
         owner_label = str(
             claims.get("name") or claims.get("email") or claims.get("client_id") or owner_id
         )
-        # `key_id` is used in audit logs.  For JWTs we use the JWT ID if
-        # provided, otherwise a stable prefix of the subject.
+        # For JWTs, use the JWT ID if provided, otherwise a stable prefix of
+        # the subject.  Used in audit logs.
         key_id = str(claims.get("jti") or f"jwt_{owner_id}")
 
         return CallerIdentity(
@@ -144,7 +130,51 @@ class JWTValidator:
             transport=self._transport,
         )
 
-    async def _get_keyset(self, *, force_refresh: bool) -> Any:
+    async def _resolve_and_decode(self, raw_token: str, kid: str | None) -> dict[str, Any]:
+        """Find the signing key by ``kid`` and verify ``raw_token`` against it.
+
+        Refetches the JWKS once — on either a missing key or a signature
+        failure — to cover key rotation, including a key rotated in place under
+        a reused ``kid``.  Claim failures (exp/iss/aud) are not retried, since a
+        fresh keyset can't fix them.  Every failure raises the generic error.
+        """
+        keyset = await self._get_keyset(force_refresh=False)
+        refreshed = False
+        while True:
+            pyjwk = _find_key(keyset, kid)
+            if pyjwk is not None:
+                try:
+                    return jwt.decode(
+                        raw_token,
+                        key=pyjwk.key,
+                        algorithms=self._algorithms,
+                        audience=self.audience,
+                        issuer=self.issuer,
+                        leeway=0,
+                        options={
+                            "require": ["exp", "sub"],
+                            "verify_aud": True,
+                            "verify_iss": True,
+                            "verify_exp": True,
+                        },
+                    )
+                except jwt.InvalidSignatureError as exc:
+                    # The cached key may be stale (rotated in place); refetch once.
+                    if refreshed:
+                        _log.warning("jwt_signature_invalid", error=str(exc))
+                        raise JWTValidationError(_INVALID_TOKEN_MSG) from exc
+                except jwt.InvalidTokenError as exc:
+                    # exp/iss/aud/malformed — a fresh keyset won't help.
+                    _log.warning("jwt_validation_failed", error=str(exc))
+                    raise JWTValidationError(_INVALID_TOKEN_MSG) from exc
+            elif refreshed:
+                _log.warning("jwt_unknown_kid", kid=kid)
+                raise JWTValidationError(_INVALID_TOKEN_MSG)
+
+            keyset = await self._get_keyset(force_refresh=True)
+            refreshed = True
+
+    async def _get_keyset(self, *, force_refresh: bool) -> PyJWKSet:
         async with self._cache_lock:
             cached = self._cache
             fresh = (
@@ -157,9 +187,19 @@ class JWTValidator:
 
             response = await self._http.get(self.jwks_url)
             response.raise_for_status()
-            keyset = JsonWebKey.import_key_set(response.json())
+            keyset = PyJWKSet.from_dict(response.json())
             self._cache = _CachedJWKS(keyset=keyset, fetched_at=time.time())
             return keyset
+
+
+def _find_key(keyset: PyJWKSet, kid: str | None) -> PyJWK | None:
+    for k in keyset.keys:
+        if k.key_id == kid:
+            return k
+    # No kid in token header — fall back to the only key if the set is unambiguous.
+    if kid is None and len(keyset.keys) == 1:
+        return keyset.keys[0]
+    return None
 
 
 def _extract_scopes(claims: dict[str, Any], claim_name: str) -> list[str]:

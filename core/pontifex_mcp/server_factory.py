@@ -94,6 +94,7 @@ def build_http_app(
     health_check: Callable[[], Awaitable[dict[str, Any]]],
     *,
     allow_anonymous: bool = False,
+    enable_api_keys: bool = True,
     connector_managers: dict[str, DataSourceManager] | None = None,
 ) -> FastAPI:
     """Wrap an already-built FastMCP server in a FastAPI app.
@@ -103,6 +104,12 @@ def build_http_app(
     tools already registered). `allow_anonymous` selects open mode: the
     AuthMiddleware injects an anonymous caller instead of requiring a token, and
     no JWT/API-key backend is wired.
+
+    `enable_api_keys` gates whether the API-key resolver is wired from
+    `DATABASE_URL`. The facade passes `False` for a `JwtAuth()` server so that
+    setting `DATABASE_URL` (e.g. for Postgres audit) does not silently turn on
+    API-key auth. Defaults to `True` for the legacy `create_mcp_http_app` path,
+    which always serves API keys.
     """
     connector_managers = connector_managers or {}
 
@@ -144,10 +151,13 @@ def build_http_app(
             allowed_hosts=settings.allowed_hosts,
         )
     else:
+        # Only wire the API-key store when API keys are actually enabled. A
+        # JwtAuth server with DATABASE_URL set (for audit) must not authenticate
+        # sk_ tokens against the key table — that path stays "not configured".
         app.add_middleware(
             AuthMiddleware,
-            redis_url=settings.redis_url or None,
-            database_url=settings.database_url or None,
+            redis_url=(settings.redis_url or None) if enable_api_keys else None,
+            database_url=(settings.database_url or None) if enable_api_keys else None,
             cache_ttl=settings.api_key_cache_ttl_seconds,
             jwt_validator=jwt_validator,
             public_base_url=settings.public_base_url,

@@ -1,8 +1,10 @@
+import asyncio
 import json
 from dataclasses import asdict
 
 import redis.asyncio as redis
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+import structlog
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -13,6 +15,14 @@ from pontifex_mcp.auth.discovery import external_base_url
 from pontifex_mcp.auth.identity import CallerIdentity, anonymous_identity
 from pontifex_mcp.auth.jwt_validator import JWTValidationError, JWTValidator
 from pontifex_mcp.middleware.rate_limit import RateLimiter
+from pontifex_mcp.storage import (
+    create_db_engine,
+    ensure_sqlite_schema,
+    is_sqlite,
+    normalize_db_url,
+)
+
+logger = structlog.get_logger(__name__)
 
 # Public/unauthenticated paths. Auth middleware skips these.
 _PUBLIC_PATHS: tuple[str, ...] = (
@@ -36,7 +46,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     Two paths share the same identity contract:
 
     * Tokens prefixed with ``sk_live_`` are looked up via :class:`APIKeyResolver`
-      (Redis-first, Postgres-fallback hash check).
+      (Redis-cached when configured, direct store hash check otherwise).
     * Anything else is validated as an OAuth 2.1 JWT via :class:`JWTValidator`
       against the configured JWKS endpoint.
 
@@ -64,14 +74,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Build the middleware.
 
         Either pass an explicit ``api_key_resolver`` (preferred in tests),
-        provide ``redis_url`` + ``database_url`` so the middleware can wire one
-        up itself, or set ``allow_anonymous=True`` for an open server with no
-        auth backend at all.  ``public_base_url`` / ``allowed_hosts`` are passed
-        through to :func:`external_base_url` to pin the host advertised in the
-        ``WWW-Authenticate`` challenge.
+        provide ``database_url`` (with optional ``redis_url``) so the middleware
+        can wire one up itself, or set ``allow_anonymous=True`` for an open
+        server with no auth backend at all.  ``public_base_url`` /
+        ``allowed_hosts`` are passed through to :func:`external_base_url` to pin
+        the host advertised in the ``WWW-Authenticate`` challenge.
 
-        When the middleware wires up its own Redis client (the ``redis_url``
-        path) it also builds a :class:`RateLimiter` from it unless one is given.
+        ``database_url`` accepts a SQLite file (``sqlite+aiosqlite:///x.db``) or
+        a Postgres URL.  SQLite tables are created lazily on the first resolve;
+        Postgres schemas are owned by Alembic.
+
+        ``redis_url`` is optional.  With it, the middleware builds a Redis-cached
+        resolver and a :class:`RateLimiter` (unless one is given).  Without it,
+        the resolver reads the store directly and rate limiting is disabled with
+        a startup log — there is no shared counter to enforce a per-caller limit,
+        and a per-process counter would silently skew under multiple replicas.
         In the injected-resolver path a ``rate_limiter`` must be passed
         explicitly; otherwise rate limiting is off (convenient for tests).
 
@@ -87,26 +104,60 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.allow_anonymous = allow_anonymous
         self.jwt_validator = jwt_validator
         self.resolver: APIKeyResolver | None
+        # SQLite key stores create their tables lazily on first resolve; this
+        # gate stays "ready" (a no-op) for Postgres and the injected-resolver path.
+        self._schema_ready = True
+        self._schema_lock = asyncio.Lock()
         if api_key_resolver is not None:
             self.resolver = api_key_resolver
-        elif redis_url is not None and database_url is not None:
-            self.redis_client = redis.from_url(redis_url)
-            self.engine = create_async_engine(database_url, pool_size=5, max_overflow=10)
+        elif database_url is not None:
+            url = normalize_db_url(database_url)
+            self.redis_client = redis.from_url(redis_url) if redis_url is not None else None
+            self.engine = create_db_engine(url)
             self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
             self.resolver = APIKeyResolver(
                 self.redis_client, self.session_factory, cache_ttl=cache_ttl
             )
-            if self.rate_limiter is None:
-                self.rate_limiter = RateLimiter(self.redis_client)
+            if is_sqlite(url):
+                self._schema_ready = False
+            if self.redis_client is not None:
+                if self.rate_limiter is None:
+                    self.rate_limiter = RateLimiter(self.redis_client)
+            else:
+                # Rate limiting needs a shared counter store. Without Redis it
+                # fails open (consistent with RateLimiter's own error behavior)
+                # and says so, rather than faking a per-process limit that would
+                # read as N× the configured value across replicas.
+                logger.warning(
+                    "rate_limiting_disabled",
+                    msg=(
+                        "rate limiting disabled: no REDIS_URL set. "
+                        "Add REDIS_URL to enforce per-caller limits."
+                    ),
+                )
         elif allow_anonymous or jwt_validator is not None:
             # Open mode, or JWT-only (no API-key store): no resolver. An sk_
             # token then fails cleanly (the dispatch path guards a None resolver).
             self.resolver = None
         else:
             raise ValueError(
-                "AuthMiddleware needs redis_url + database_url, an explicit "
+                "AuthMiddleware needs database_url, an explicit "
                 "api_key_resolver, a jwt_validator, or allow_anonymous=True."
             )
+
+    async def _ensure_schema(self) -> None:
+        """Create the SQLite key-store tables once, on first resolve.
+
+        No-op for Postgres (Alembic-owned) and the injected-resolver path, where
+        ``_schema_ready`` starts True. Mirrors ``DbAuditWriter._ensure_schema``.
+        """
+        if self._schema_ready:
+            return
+        async with self._schema_lock:
+            if self._schema_ready:
+                return
+            await ensure_sqlite_schema(self.engine)
+            self._schema_ready = True
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in _PUBLIC_PATHS:
@@ -133,6 +184,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if raw_token.startswith(_API_KEY_PREFIX):
             if self.resolver is None:
                 return self._auth_error(request, "API-key auth is not configured on this server.")
+            await self._ensure_schema()
             identity = await self.resolver.resolve(raw_token)
             if identity is None:
                 return self._auth_error(request, "Invalid, expired, or revoked API key.")

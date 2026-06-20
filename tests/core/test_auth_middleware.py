@@ -10,13 +10,18 @@ Verifies that:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from pontifex_mcp.auth.api_keys import hash_key
 from pontifex_mcp.auth.identity import CallerIdentity
 from pontifex_mcp.auth.jwt_validator import JWTValidationError
 from pontifex_mcp.middleware.auth import AuthMiddleware
+from pontifex_mcp.models.db import ApiKeyModel
+from pontifex_mcp.storage import create_db_engine, ensure_sqlite_schema
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -92,9 +97,66 @@ def test_open_mode_ignores_presented_token():
 
 
 def test_no_backend_and_not_anonymous_raises():
-    """Without a resolver, redis+db, or allow_anonymous, construction fails."""
+    """Without a resolver, a database_url, or allow_anonymous, construction fails."""
     with pytest.raises(ValueError, match="allow_anonymous"):
         AuthMiddleware(Starlette())
+
+
+def test_apikey_auth_on_sqlite_without_redis(tmp_path):
+    """The zero-infra floor: a SQLite ``DATABASE_URL`` and no ``REDIS_URL``.
+
+    The store's tables are created lazily on first resolve, a seeded key
+    authenticates and carries its scopes, no rate limiter is wired (so calls
+    over the key's rpm are never blocked), and an unknown key still 401s.
+    """
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'keys.db'}"
+    raw_key = "sk_live_floor"  # gitleaks:allow
+
+    async def _seed() -> None:
+        engine = create_db_engine(db_url)
+        await ensure_sqlite_schema(engine)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as session:
+            session.add(
+                ApiKeyModel(
+                    key_id="key_floor",
+                    key_hash=hash_key(raw_key),
+                    owner_id="usr_floor",
+                    owner_label="Floor User",
+                    scopes=["payments:balance:read"],
+                    rate_limit_rpm=1,  # deliberately tiny — proves no enforcement
+                    is_active=True,
+                )
+            )
+            await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_seed())
+
+    # No Redis → no limiter wired, but the resolver is live.
+    mw = AuthMiddleware(Starlette(), database_url=db_url)
+    assert mw.resolver is not None
+    assert mw.rate_limiter is None
+
+    async def echo(request: Request) -> JSONResponse:
+        caller: CallerIdentity = request.state.caller
+        return JSONResponse({"owner_id": caller.owner_id, "scopes": caller.scopes})
+
+    app = Starlette(routes=[Route("/mcp", echo, methods=["GET"])])
+    app.add_middleware(AuthMiddleware, database_url=db_url)
+    client = TestClient(app)
+
+    # rate_limit_rpm is 1, yet repeated calls all pass — nothing enforces it.
+    for _ in range(3):
+        response = client.get("/mcp", headers={"Authorization": f"Bearer {raw_key}"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["owner_id"] == "usr_floor"
+        assert body["scopes"] == ["payments:balance:read"]
+
+    unknown = client.get("/mcp", headers={"Authorization": "Bearer sk_live_nope"})  # gitleaks:allow
+    assert unknown.status_code == 401
+    assert unknown.json()["error_code"] == "auth_failed"
 
 
 def test_allow_anonymous_with_configured_backend_still_enforces_auth():

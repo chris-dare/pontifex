@@ -18,11 +18,17 @@ def hash_key(raw_key: str, algorithm: str = "sha256") -> str:
 
 
 class APIKeyResolver:
-    """Resolves an API key to a CallerIdentity. Redis-first, Postgres-fallback."""
+    """Resolves an API key to a CallerIdentity.
+
+    Redis-cached when a client is configured, direct store read otherwise. The
+    cache only amortizes a Postgres network round-trip; a local SQLite read is
+    in-process, so the no-Redis path queries the store on every call rather than
+    standing up an in-process cache that would skew multi-replica behavior.
+    """
 
     def __init__(
         self,
-        redis_client: Any,
+        redis_client: Any | None,
         db_session_factory: async_sessionmaker,
         cache_ttl: int = 300,
         transport: str = "http",
@@ -35,14 +41,15 @@ class APIKeyResolver:
     async def resolve(self, raw_key: str) -> CallerIdentity | None:
         key_hash = hash_key(raw_key)
 
-        cached = await self.redis.get(f"apikey:{key_hash}")
-        if cached:
-            data = json.loads(cached)
-            # An API-key caller is never anonymous. Force the flag off rather
-            # than trust the cache blob: a poisoned/forged `apikey:<hash>` entry
-            # with `anonymous: true` would otherwise bypass every scope check.
-            data["anonymous"] = False
-            return CallerIdentity(**data)
+        if self.redis is not None:
+            cached = await self.redis.get(f"apikey:{key_hash}")
+            if cached:
+                data = json.loads(cached)
+                # An API-key caller is never anonymous. Force the flag off rather
+                # than trust the cache blob: a poisoned/forged `apikey:<hash>` entry
+                # with `anonymous: true` would otherwise bypass every scope check.
+                data["anonymous"] = False
+                return CallerIdentity(**data)
 
         async with self.db() as session:
             result = await session.execute(
@@ -64,9 +71,10 @@ class APIKeyResolver:
                 transport=self.transport,
             )
 
-        await self.redis.setex(
-            f"apikey:{key_hash}",
-            self.cache_ttl,
-            json.dumps(asdict(identity)),
-        )
+        if self.redis is not None:
+            await self.redis.setex(
+                f"apikey:{key_hash}",
+                self.cache_ttl,
+                json.dumps(asdict(identity)),
+            )
         return identity

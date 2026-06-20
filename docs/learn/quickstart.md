@@ -4,14 +4,14 @@ In this tutorial you'll build an MCP server for a payments API. By the end, an A
 agent can call your tools over HTTP, with every request authenticated against a
 credential and written to a permanent audit trail.
 
-You'll add one capability at a time. Each step is the previous file plus one
-parameter. Nothing from a previous step breaks:
+You'll add one capability at a time, each a small change to the same server. Every
+step keeps working as the next one builds on it:
 
 1. A **live server** any MCP client can connect to
-2. **Audit**: A persistent audit log of every tool call
-3. **Autogenerate Tools**: Tools generated from an existing REST API, no handler code required
-4. **Auth**: Token-gated access with per-tool scope enforcement
-5. **Cache**: A Redis cache to protect your upstream from agent traffic
+2. **Audit**: a persistent log of every tool call
+3. **Generated tools**: tools from an existing REST API, no handler code required
+4. **Auth**: token-gated access with per-tool scope enforcement
+5. **Cache**: a Redis cache to protect your upstream from agent traffic
 
 **New to MCP?** Read the [overview](../overview.md) for context on what MCP is and
 why Pontifex exists on top of it. To see how a request travels through the stack
@@ -21,31 +21,22 @@ end-to-end, see [Request path](../concepts/request-path.md).
 
 !!! info "Prerequisites"
 
-```
-**Python 3.12+**. Postgres, Redis, and an OIDC provider come in only at the step
-that uses them.
-```
+    **Python 3.12+**. Postgres, Redis, and an OIDC provider come in only at the step
+    that uses them.
 
 ## Install
 
 === "uv"
 
-```
-```bash
-uv add pontifex-mcp
-```
-
-```
+    ```bash
+    uv add pontifex-mcp
+    ```
 
 === "pip"
 
-```
-
-```bash
-pip install pontifex-mcp
-```
-
-```
+    ```bash
+    pip install pontifex-mcp
+    ```
 
 ---
 
@@ -103,7 +94,7 @@ Audit logging is already active. Every call writes a structured line to stdout:
 ```
 
 `owner_id=anonymous` because no auth backend is active yet. `scope="balance:read"`
-declares what permission a caller needs — it's advisory here, enforced at step 4.
+declares what permission a caller needs. It's advisory here, enforced at step 4.
 
 Scopes use `resource:action`. Pontifex prepends the server name as the domain, so
 `"balance:read"` on a server named `"payments"` becomes `payments:balance:read`. When
@@ -213,8 +204,8 @@ response wraps the upstream JSON in a governed envelope:
 }
 ```
 
-Tools are named `{domain}_{name}` — the `names` key sets the suffix, and the domain
-prefix is always added.
+Tools are named `{domain}_{name}`. The `names` key sets the suffix; the domain prefix
+is always added.
 
 `include` is a strict allowlist. List the operations you want to expose; everything
 else stays hidden. If your API has fifty endpoints and you list two, clients see two.
@@ -244,11 +235,8 @@ if __name__ == "__main__":
 ```
 
 `ApiKeyAuth()` reads `DATABASE_URL` (key store) and `REDIS_URL` (lookup cache) from
-the environment.
+the environment. Need Postgres and Redis running? The quickest way to get both:
 
-!!! tip "Quickest way to get Postgres and Redis running"
-
-```
 === "Docker / Podman"
 
     ```bash
@@ -264,11 +252,10 @@ the environment.
     Create the schema and a test API key (run this once):
 
     ```python title="setup_dev_key.py"
-    import asyncio, hashlib
+    import asyncio, hashlib, os
     from pontifex_mcp.models.db import Base, ApiKeyModel
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy import text
-    import os
 
     DB = os.environ["DATABASE_URL"]
     KEY = "sk_dev_test"
@@ -301,39 +288,51 @@ the environment.
 
 === "Managed cloud"
 
-    - **Postgres** — [Neon](https://neon.tech) has a free tier. Copy the
+    - **Postgres**: [Neon](https://neon.tech) has a free tier. Copy the
       `postgresql://…` connection string and replace `postgresql://` with
       `postgresql+asyncpg://`.
-    - **Redis** — [Upstash](https://upstash.com) or [Redis Cloud](https://redis.com/try-free/)
+    - **Redis**: [Upstash](https://upstash.com) or [Redis Cloud](https://redis.com/try-free/)
       both have free tiers. Use the `redis://` or `rediss://` URL directly.
 
     Run `setup_dev_key.py` from the Docker tab above, substituting your managed URLs.
-```
 
 ```bash
 DATABASE_URL=postgresql+asyncpg://… REDIS_URL=redis://… python main.py
 ```
 
 One difference from step 1: with an auth backend active, the server binds to
-`0.0.0.0` instead of `127.0.0.1` — it's ready to accept connections from outside
+`0.0.0.0` instead of `127.0.0.1`. It's ready to accept connections from outside
 localhost:
 
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
 ```
 
-Every request now needs `Authorization: Bearer sk_dev_test`. A call without a token returns:
+Every request now needs an `Authorization: Bearer` header. A call without one returns:
 
 ```json
 {"error_code": "auth_failed", "message": "Missing 'Authorization: Bearer <token>' header.", "status": 401}
 ```
 
-The auth middleware checks the key and its scopes **before your handler runs**. A caller
-without `payments:balance:read` gets `401` and never reaches `get_balance`. That's the
-full scope for `scope="balance:read"` on a server named `"payments"` — the domain is
-always prepended.
+Pass the key from your MCP client config:
 
-Once you have a valid API key, query the audit log to confirm the real caller identity:
+```json
+{
+  "mcpServers": {
+    "payments": {
+      "url": "http://localhost:8080/mcp",
+      "headers": { "Authorization": "Bearer sk_dev_test" }
+    }
+  }
+}
+```
+
+The auth middleware checks the key and its scopes **before your handler runs**. A caller
+without `payments:balance:read` gets a `403` (`scope_denied`) and never reaches
+`get_balance`. That's the full scope for `scope="balance:read"` on a server named
+`"payments"`; the domain is always prepended.
+
+Once a request goes through, query the audit log to confirm the real caller identity:
 
 ```bash
 sqlite3 audit.db "SELECT timestamp, tool_name, owner_id, response_ms FROM audit_log"
@@ -415,7 +414,6 @@ is `None`.
 
 ## Where to go next
 
-- **Issue API keys, set up OAuth** — [Authenticate callers](../guides/authenticate-callers.md)
-- **Expose a full API** — [Connect an existing API](connect-an-api.md)
-- **See how a request flows** — [Request path](../concepts/request-path.md)
-
+- **Issue API keys, set up OAuth**: [Authenticate callers](../guides/authenticate-callers.md)
+- **Expose a full API**: [Connect an existing API](connect-an-api.md)
+- **See how a request flows**: [Request path](../concepts/request-path.md)

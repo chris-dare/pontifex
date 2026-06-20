@@ -12,7 +12,7 @@ dev-dependencies = [
 ]
 
 [dependency-groups]
-docs = ["zensical>=0.0.44"]
+docs = ["zensical>=0.0.45"]
 
 [tool.ruff]
 line-length = 100

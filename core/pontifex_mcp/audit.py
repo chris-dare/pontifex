@@ -55,7 +55,7 @@ class AuditWriter(Protocol):
 
 
 class DbAuditWriter:
-    """Writes one row to core.audit_log per tool call. Swallows DB errors.
+    """Writes one row to pontifex_mcp_core.audit_log per tool call. Swallows DB errors.
 
     Accepts any value `normalize_db_url` understands — a bare path (`audit.db`)
     or a full URL. SQLite tables are created lazily on first write (Postgres

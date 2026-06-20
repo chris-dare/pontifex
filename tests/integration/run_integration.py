@@ -125,7 +125,7 @@ async def latest_audit_delegation(tool_name: str) -> str | None:
     conn = await asyncpg.connect(os.environ["PG_DSN"])
     try:
         return await conn.fetchval(
-            "select delegated_audience from core.audit_log "
+            "select delegated_audience from pontifex_mcp_core.audit_log "
             "where tool_name = $1 order by id desc limit 1",
             tool_name,
         )

@@ -19,9 +19,9 @@ def upgrade() -> None:
     op.add_column(
         "audit_log",
         sa.Column("delegated_audience", sa.Text, nullable=True),
-        schema="core",
+        schema="pontifex_mcp_core",
     )
 
 
 def downgrade() -> None:
-    op.drop_column("audit_log", "delegated_audience", schema="core")
+    op.drop_column("audit_log", "delegated_audience", schema="pontifex_mcp_core")

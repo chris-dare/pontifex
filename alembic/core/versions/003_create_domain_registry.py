@@ -34,9 +34,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        schema="core",
+        schema="pontifex_mcp_core",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("domain_registry", schema="core")
+    op.drop_table("domain_registry", schema="pontifex_mcp_core")

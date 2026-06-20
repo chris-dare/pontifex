@@ -16,7 +16,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE SCHEMA IF NOT EXISTS core")
+    op.execute("CREATE SCHEMA IF NOT EXISTS pontifex_mcp_core")
     op.create_table(
         "api_keys",
         sa.Column("key_id", sa.Text, primary_key=True),
@@ -34,13 +34,13 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        schema="core",
+        schema="pontifex_mcp_core",
     )
-    op.create_index("idx_api_keys_hash", "api_keys", ["key_hash"], schema="core")
-    op.create_index("idx_api_keys_owner", "api_keys", ["owner_id"], schema="core")
+    op.create_index("idx_api_keys_hash", "api_keys", ["key_hash"], schema="pontifex_mcp_core")
+    op.create_index("idx_api_keys_owner", "api_keys", ["owner_id"], schema="pontifex_mcp_core")
 
 
 def downgrade() -> None:
-    op.drop_index("idx_api_keys_owner", table_name="api_keys", schema="core")
-    op.drop_index("idx_api_keys_hash", table_name="api_keys", schema="core")
-    op.drop_table("api_keys", schema="core")
+    op.drop_index("idx_api_keys_owner", table_name="api_keys", schema="pontifex_mcp_core")
+    op.drop_index("idx_api_keys_hash", table_name="api_keys", schema="pontifex_mcp_core")
+    op.drop_table("api_keys", schema="pontifex_mcp_core")

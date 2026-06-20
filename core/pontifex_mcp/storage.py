@@ -4,9 +4,9 @@ Two dialects are supported, detected from the connection-string scheme:
 
   - **SQLite** (`sqlite+aiosqlite://...`) — the zero-config quickstart/local
     store. Tables are created on first use via `create_all` (no Alembic), in a
-    single file with no schemas. The models hardcode `schema="core"` for
-    Postgres, so for SQLite we translate `core` → the default schema via
-    `schema_translate_map`.
+    single file with no schemas. The models hardcode `schema="pontifex_mcp_core"`
+    for Postgres, so for SQLite we translate `pontifex_mcp_core` → the default
+    schema via `schema_translate_map`.
   - **Postgres** (`postgresql+asyncpg://...`) — production. Alembic owns the
     schema (schema-per-domain isolation), so we never `create_all` here.
 
@@ -18,8 +18,8 @@ from sqlalchemy.pool import StaticPool
 
 from pontifex_mcp.models.db import Base
 
-# SQLite has no schemas; map the models' `core` schema to the default one.
-_SQLITE_SCHEMA_MAP = {"core": None}
+# SQLite has no schemas; map the models' `pontifex_mcp_core` schema to the default one.
+_SQLITE_SCHEMA_MAP = {"pontifex_mcp_core": None}
 
 
 def normalize_db_url(value: str) -> str:
@@ -46,7 +46,7 @@ def is_sqlite(url: str) -> bool:
 def create_db_engine(url: str) -> AsyncEngine:
     """Build an `AsyncEngine` configured for the URL's dialect.
 
-    For SQLite the engine carries the `core` → default schema translation so the
+    For SQLite the engine carries the `pontifex_mcp_core` → default schema translation so the
     Postgres-shaped models work unchanged; an in-memory database additionally
     uses a `StaticPool` so every connection sees the same database.
     """

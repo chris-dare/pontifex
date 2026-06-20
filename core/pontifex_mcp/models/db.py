@@ -54,6 +54,11 @@ class AuditLogModel(Base):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # `index=True` gives portable single-column indexes on the SQLite floor
+    # (create_all). Postgres is Alembic-managed and intentionally diverges: the
+    # migration builds composite `(col, timestamp DESC)` indexes tuned for the
+    # "latest rows for X" audit queries. Columns/nullability/keys stay in parity
+    # across both dialects; only audit_log's index *shape* differs, by design.
     domain: Mapped[str] = mapped_column(String, nullable=False, index=True)
     key_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)

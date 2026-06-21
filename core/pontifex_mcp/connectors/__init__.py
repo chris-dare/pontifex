@@ -12,7 +12,7 @@ Code-first:
     register_openapi_tools(
         mcp,
         spec="https://api.internal/openapi.json",
-        domain="orders",
+        namespace="orders",
         base_url="https://api.internal",
         audit=audit,
         auth=BearerFromEnv("ORDERS_API_TOKEN"),
@@ -21,7 +21,7 @@ Code-first:
 
 Config-first: point `PONTIFEX_CONNECTORS_CONFIG` at a connectors YAML file
 (see `pontifex_mcp.connectors.config`) and the server factory registers the
-tools at startup — no domain code required.
+tools at startup — no namespace code required.
 """
 
 from pontifex_mcp.connectors.adapter import (

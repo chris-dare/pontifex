@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["core", "domains/*"]
+members = ["core", "examples/*"]
 
 [tool.uv]
 dev-dependencies = [
@@ -25,4 +25,4 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["core", "domains/gse"]
+pythonpath = ["core", "examples/gse"]

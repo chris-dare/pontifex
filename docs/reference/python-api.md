@@ -21,7 +21,7 @@ Anything reached through a deeper path (`pontifex_mcp.middleware`, `pontifex_mcp
 
 `@mcp.tool(name=None, *, scope=None, **fastmcp_kwargs)`
 :   FastMCP's `.tool()` plus a `scope`. `scope="resource:action"` (or
-    `"domain:resource:action"`) is enforced when an auth backend is configured, advisory
+    `"namespace:resource:action"`) is enforced when an auth backend is configured, advisory
     otherwise; omit it for an unscoped tool. Folds scope-check + audit in for you.
 
 `mcp.run(transport='stdio', mount_path=None, *, http=False, auth=None)`
@@ -41,11 +41,11 @@ Anything reached through a deeper path (`pontifex_mcp.middleware`, `pontifex_mcp
 
 For full control (or to wire pieces the facade doesn't expose), build the app directly:
 
-`create_mcp_http_app(domain_name, settings, register_tools, health_check, *, instructions='', audit=None)` → `FastAPI`
+`create_mcp_http_app(namespace_name, settings, register_tools, health_check, *, instructions='', audit=None)` → `FastAPI`
 :   Builds the ASGI app. Wires auth + rate-limit middleware, the audit writer, OAuth
     discovery endpoints, and your registered tools. Requires `DATABASE_URL` + `REDIS_URL`.
 
-`run_mcp_stdio(domain_name, settings, register_tools, *, instructions='', audit=None, identity=None)` → `None`
+`run_mcp_stdio(namespace_name, settings, register_tools, *, instructions='', audit=None, identity=None)` → `None`
 :   Blocking runner for the stdio transport: local MCP clients that launch the server
     as a subprocess. It returns `None`, not a coroutine. Call it, don't
     `await` it.
@@ -53,17 +53,17 @@ For full control (or to wire pieces the facade doesn't expose), build the app di
 ## Configuration
 
 `CoreSettings`
-:   The settings base class (pydantic-settings). Subclass it to add domain fields. You
+:   The settings base class (pydantic-settings). Subclass it to add namespace fields. You
     inherit the infrastructure settings: `DATABASE_URL`, `REDIS_URL`, the `AUTH_*` group,
     and `PUBLIC_BASE_URL`. Every variable: [Configuration](configuration.md).
 
 ## Tools
 
-`tool_runtime(*, domain, tool_name, resource, action, audit, source_unavailable_exception=None)`
-:   The decorator that wraps a tool handler. Enforces the `domain:resource:action`
+`tool_runtime(*, namespace, tool_name, resource, action, audit, source_unavailable_exception=None)`
+:   The decorator that wraps a tool handler. Enforces the `namespace:resource:action`
     scope and writes the audit row. A successful return value passes through unchanged;
     it converts a raised error into a structured `ToolError`. `source_unavailable_exception`
-    maps a domain's own "all sources down" exception to a clean unavailable response.
+    maps a namespace's own "all sources down" exception to a clean unavailable response.
 
 `InvalidInput`
 :   Raise inside a handler to reject bad arguments with a clean, structured error
@@ -71,7 +71,7 @@ For full control (or to wire pieces the facade doesn't expose), build the app di
 
 ## Connectors
 
-`register_openapi_tools(mcp, *, spec, domain, base_url, audit, include, auth=None, allow_mutations=False, names=None, ...)` → `DataSourceManager`
+`register_openapi_tools(mcp, *, spec, namespace, base_url, audit, include, auth=None, allow_mutations=False, names=None, ...)` → `DataSourceManager`
 :   Generates one governed tool per allowlisted operation in an OpenAPI 3.x spec. It
     wraps each in `tool_runtime` with a scope derived from the operation, and returns the
     manager wrapping the generated adapter, so you can fold it into your health checks.
@@ -99,9 +99,9 @@ Exchanged tokens are cached behind the `TokenCache` seam, chosen by
 :   The resolved caller: `key_id`, `owner_id`, `owner_label`, `scopes`,
     `rate_limit_rpm`, `transport`. Produced by both the API-key and JWT paths.
 
-`scopes_match(scopes, domain, resource, action)` → `bool`
-:   Whether the caller's `scopes` satisfy a required `domain` / `resource` / `action`.
-    Honors wildcard forms: `domain:*:read`, `domain:resource:*`, `domain:*:*`. See
+`scopes_match(scopes, namespace, resource, action)` → `bool`
+:   Whether the caller's `scopes` satisfy a required `namespace` / `resource` / `action`.
+    Honors wildcard forms: `namespace:*:read`, `namespace:resource:*`, `namespace:*:*`. See
     [Errors & scopes](errors-and-scopes.md#scopes).
 
 ## Data adapters
@@ -114,7 +114,7 @@ Exchanged tokens are cached behind the `TokenCache` seam, chosen by
 :   Orders adapters by health and records each one's success and failure
     (`get_available_adapters`, `record_success`, `record_failure`, `health_summary`).
     Gives your tool the ordering and bookkeeping to iterate sources and fail over. The
-    domain code makes the actual calls. Guide:
+    namespace code makes the actual calls. Guide:
     [Resilient adapters](../guides/resilient-adapters.md).
 
 ## Reliability

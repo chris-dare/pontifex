@@ -129,7 +129,7 @@ jobs:
           # Build the DATABASE_URL for the UAT database
           UAT_DB_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@pontifex-mcp-db.internal:5432/$DB_NAME"
 
-          # Bulk-import the shared settings from Doppler — the GSE_MCP_* domain
+          # Bulk-import the shared settings from Doppler — the GSE_MCP_* namespace
           # settings and the unprefixed infrastructure vars (AUTH_*, REDIS_URL),
           # mirroring pre-prod — then override the values specific to this
           # ephemeral PR app.  A single `flyctl secrets import` keeps it to one

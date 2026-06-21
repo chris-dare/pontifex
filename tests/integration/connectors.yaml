@@ -1,5 +1,5 @@
 connectors:
-  - domain: billing
+  - namespace: billing
     spec: http://downstream:8000/openapi.json
     base_url: http://downstream:8000
     auth:

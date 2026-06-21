@@ -27,7 +27,7 @@ values into your environment.
 
     You need an Auth0 tenant (the free tier is fine) and your Pontifex server's public
     URL, call it `https://your-server.example`. Have your tool scopes in mind, in
-    `domain:resource:action` form (e.g. `orders:order:read`).
+    `namespace:resource:action` form (e.g. `orders:order:read`).
 
 ## Step 1: create the API
 
@@ -47,7 +47,7 @@ The Identifier you typed is your `AUTH_AUDIENCE`. Keep it handy.
 These are your scopes. They have to match what your tools require, exactly.
 
 1. Open the API → **Permissions** tab.
-2. Add one row per scope, in `domain:resource:action` form:
+2. Add one row per scope, in `namespace:resource:action` form:
 
    | Permission | Description |
    | --- | --- |
@@ -100,7 +100,7 @@ assign permissions to a single user directly.
 You now have every value. Each one comes from a step above:
 
 ```bash
-# Replace your-tenant and the region to match your Auth0 domain.
+# Replace your-tenant and the region to match your Auth0 namespace.
 AUTH_ISSUER=https://your-tenant.us.auth0.com/                              # trailing slash matters
 AUTH_JWKS_URL=https://your-tenant.us.auth0.com/.well-known/jwks.json
 AUTH_AUDIENCE=https://your-server.example                                  # the API Identifier from Step 1
@@ -121,7 +121,7 @@ Three checks. The first two need no client.
 curl https://your-server.example/.well-known/oauth-protected-resource
 ```
 
-You should see your `authorization_servers` pointing at the Auth0 domain.
+You should see your `authorization_servers` pointing at the Auth0 namespace.
 
 **2. Unauthenticated calls are challenged.** A request with no token returns `401` with
 a `WWW-Authenticate: Bearer …` header naming that discovery URL. MCP clients follow that
@@ -177,7 +177,7 @@ The same six variables work everywhere. Only three values change shape:
 | `AUTH_SCOPES_CLAIM` | `permissions` | `scp` or `roles` | a claim you map (e.g. roles) |
 
 The rest of the flow is the same: create an API/app registration, define scopes as
-`domain:resource:action`, make sure they land in the configured claim, and assign them
+`namespace:resource:action`, make sure they land in the configured claim, and assign them
 to users. Switching providers is a config change, not a code change.
 
 ## Next

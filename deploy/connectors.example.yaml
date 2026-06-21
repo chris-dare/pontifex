@@ -1,15 +1,15 @@
 # Example connectors file: onboard a REST API as governed MCP tools with
-# config alone — no domain code. Point PONTIFEX_CONNECTORS_CONFIG at this file
+# config alone — no namespace code. Point PONTIFEX_CONNECTORS_CONFIG at this file
 # (e.g. in fly.toml [env]) and the server registers one tool per included
 # operation at startup, each wrapped in the standard tool runtime (scope
 # check -> audit -> error envelope).
 #
-# Scopes are derived per operation as domain:resource:action — resource from
+# Scopes are derived per operation as namespace:resource:action — resource from
 # the first static path segment, action from the verb (GET->read,
 # POST/PUT/PATCH->write, DELETE->delete). E.g. "GET /orders/{order_id}" below
 # requires the caller scope orders:orders:read.
 connectors:
-  - domain: orders
+  - namespace: orders
     spec: https://api.internal/openapi.json # URL or file path, JSON or YAML
     base_url: https://api.internal
     auth:
@@ -21,14 +21,14 @@ connectors:
     # Mutating verbs are refused unless explicitly enabled:
     # allow_mutations: true
     # Tool names default to the spec's operationId; override per operation
-    # when those are machine-generated noise (tool becomes <domain>_<name>):
+    # when those are machine-generated noise (tool becomes <namespace>_<name>):
     # names:
     #   GET /orders/{order_id}: get_order
 
   # Per-user auth for a backend that enforces its own permissions: Pontifex
   # exchanges the caller's token at the IdP (RFC 8693) for one minted for this
   # backend's audience, on behalf of the user. API-key callers can't use this.
-  # - domain: billing
+  # - namespace: billing
   #   spec: https://billing.internal/openapi.json
   #   base_url: https://billing.internal
   #   auth:

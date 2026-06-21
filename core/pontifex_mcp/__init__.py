@@ -3,7 +3,7 @@
 A toolkit for standing up Model Context Protocol servers with the cross-cutting
 concerns handled for you: authentication (API keys **and** OAuth 2.1 JWTs),
 scope enforcement, rate limiting, audit logging, resilient data adapters with
-circuit breaking, and observability. Bring a domain; the core does the rest.
+circuit breaking, and observability. Bring a namespace; the core does the rest.
 
 The names re-exported here are the **supported public API**. Anything imported
 from a deeper path (e.g. ``pontifex_mcp.middleware``, ``pontifex_mcp.auth``)

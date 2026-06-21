@@ -1,7 +1,7 @@
 """`pontifex-mcp` — the operational CLI for a Pontifex MCP server.
 
 Noun-verb structure (`pontifex-mcp <resource> <action>`) mirroring the
-`domain:resource:action` scope model. Adding a resource is dropping one module
+`namespace:resource:action` scope model. Adding a resource is dropping one module
 under `cli/` and registering it here; nothing else changes.
 """
 

@@ -80,7 +80,7 @@ def test_db_upgrade_sqlite_creates_tables(tmp_path, monkeypatch):
         .execute("SELECT name FROM sqlite_master WHERE type='table'")
         .fetchall()
     }
-    assert {"api_keys", "audit_log", "domain_registry"} <= tables
+    assert {"api_keys", "audit_log", "namespace_registry"} <= tables
 
     # Idempotent: a second run is a clean no-op.
     again = runner.invoke(app, ["db", "upgrade", "--json"])

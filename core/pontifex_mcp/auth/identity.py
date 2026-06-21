@@ -17,10 +17,10 @@ class CallerIdentity:
     # not to attacker- or operator-controlled data. Fail-closed by default.
     anonymous: bool = False
 
-    def can_use_tool(self, domain: str, resource: str, action: str) -> bool:
+    def can_use_tool(self, namespace: str, resource: str, action: str) -> bool:
         if self.anonymous:
             return True
-        return scopes_match(self.scopes, domain, resource, action)
+        return scopes_match(self.scopes, namespace, resource, action)
 
 
 def anonymous_identity(transport: str = "http") -> CallerIdentity:

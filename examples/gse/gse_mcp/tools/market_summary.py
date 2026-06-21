@@ -4,7 +4,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from pontifex_mcp import AuditWriter, tool_runtime
 
 from gse_mcp.data import AllSourcesUnavailable, GSEDataService
-from gse_mcp.tools._helpers import DOMAIN, envelope
+from gse_mcp.tools._helpers import NAMESPACE, envelope
 
 DESCRIPTION = (
     "Get today's GSE market summary: composite index, total volume, turnover, gainers, losers."
@@ -14,7 +14,7 @@ DESCRIPTION = (
 def register(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> None:
     @mcp.tool(name="gse_get_market_summary", description=DESCRIPTION, structured_output=False)
     @tool_runtime(
-        domain=DOMAIN,
+        namespace=NAMESPACE,
         tool_name="gse_get_market_summary",
         resource="market_summary",
         action="read",

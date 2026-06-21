@@ -59,7 +59,7 @@ SAMPLE_SPEC = {
 # The exact kwargs tool_runtime passes to AuditWriter.write — generated tools
 # must produce audit rows identical in shape to hand-written ones.
 AUDIT_FIELDS = {
-    "domain",
+    "namespace",
     "key_id",
     "owner_id",
     "owner_label",
@@ -94,7 +94,7 @@ def build_server():
         register_openapi_tools(
             mcp,
             spec=SAMPLE_SPEC,
-            domain="orders",
+            namespace="orders",
             base_url=BASE_URL,
             audit=audit,
             **kwargs,
@@ -195,7 +195,7 @@ def test_name_override_must_match_included_operation():
         register_openapi_tools(
             mcp,
             spec=SAMPLE_SPEC,
-            domain="orders",
+            namespace="orders",
             base_url=BASE_URL,
             audit=_RecordingAudit(),
             include=["GET /orders"],
@@ -224,7 +224,7 @@ async def test_call_success_and_audit_shape(build_server):
     assert body["data"] == [{"id": 1}]
     row = audit.calls[-1]
     assert set(row) == AUDIT_FIELDS
-    assert row["domain"] == "orders"
+    assert row["namespace"] == "orders"
     assert row["tool_name"] == "orders_list_orders"
     # FastMCP fills omitted optional params with their defaults before the
     # call, so they appear in the audited params — same as hand-written tools.

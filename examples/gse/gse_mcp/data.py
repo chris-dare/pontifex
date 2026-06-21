@@ -5,7 +5,7 @@ from pontifex_mcp import Cache, DataSourceManager
 from gse_mcp.adapters.protocol import GSEDataAdapter
 from gse_mcp.models import Equity, HistoryEntry, MarketSummary, Stock
 
-# TTLs in seconds. The cache layer is dumb; the domain decides freshness.
+# TTLs in seconds. The cache layer is dumb; the namespace decides freshness.
 TTLS: dict[str, dict[str, int]] = {
     "live": {"active": 30, "inactive": 3600},
     "history": {"active": 14400, "inactive": 14400},

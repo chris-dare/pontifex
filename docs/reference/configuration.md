@@ -5,9 +5,9 @@ Every setting Pontifex reads from the environment.
 Two kinds of variable:
 
 - **Infrastructure** settings read from **bare, unprefixed** names. They're the same
-  for every server, regardless of domain: auth, the canonical URL, the shared DB and
+  for every server, regardless of namespace: auth, the canonical URL, the shared DB and
   Redis connections.
-- **Domain** settings on your `CoreSettings` subclass read with **your domain's
+- **Namespace** settings on your `CoreSettings` subclass read with **your namespace's
   `env_prefix`** (e.g. `ORDERS_…`).
 
 ## Required

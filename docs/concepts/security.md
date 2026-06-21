@@ -38,7 +38,7 @@ JWT validation is strict:
 
 ## Authorization
 
-Permissions use a `domain:resource:action` scope model, for example `orders:order:read`.
+Permissions use a `namespace:resource:action` scope model, for example `orders:order:read`.
 
 The scope a tool requires is declared on the tool and checked **before the handler
 runs.** Scopes come from the caller's API key or their verified token claims, and the
@@ -94,7 +94,7 @@ here:
 | Pontifex handles | You handle |
 | --- | --- |
 | Authenticating every call | Running it over TLS, behind your gateway |
-| Enforcing `domain:resource:action` scopes | Configuring your OIDC provider |
+| Enforcing `namespace:resource:action` scopes | Configuring your OIDC provider |
 | Recording every call to the audit log | Securing and rotating your credentials |
 | Normalizing errors so nothing leaks | Scoping each API key to the minimum |
 

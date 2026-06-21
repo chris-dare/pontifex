@@ -1,8 +1,8 @@
 # MCP Platform
 
-A modular MCP server platform that exposes structured data domains to AI agents. Connect Claude Desktop, Claude API, or any MCP client and query real-time market data, financial instruments, and more — each domain deployed as an independent service.
+A modular MCP server platform that exposes structured data namespaces to AI agents. Connect Claude Desktop, Claude API, or any MCP client and query real-time market data, financial instruments, and more — each namespace deployed as an independent service.
 
-The first domain is **Ghana Stock Exchange (GSE)**, powered by the [kwayisi API](https://dev.kwayisi.org/apis/gse/).
+The first namespace is **Ghana Stock Exchange (GSE)**, powered by the [kwayisi API](https://dev.kwayisi.org/apis/gse/).
 
 ## Quick Start (Consumer)
 
@@ -78,28 +78,28 @@ fly deploy --app mcp-gse         # Deploy to Fly.io
 
 ```
 core/           Shared library — auth, cache, audit, circuit breaker, observability
-domains/gse/    GSE domain module — tools, adapters, models
-alembic/        DB migrations (core schema + per-domain schemas)
+examples/gse/    GSE namespace module — tools, adapters, models
+alembic/        DB migrations (core schema + per-namespace schemas)
 tests/          Unit, integration, and contract tests
 deploy/         Dockerfiles, fly.toml
 ```
 
-Each domain is a self-contained module that plugs into the shared core. Adding a new domain means adding a folder under `domains/` — core requires zero changes. See the [solution design doc](MCP_PLATFORM_SOLUTION_DESIGN_v2.md) for the full architecture.
+Each namespace is a self-contained module that plugs into the shared core. Adding a new namespace means adding a folder under `examples/` — core requires zero changes. See the [solution design doc](MCP_PLATFORM_SOLUTION_DESIGN_v2.md) for the full architecture.
 
 ### Key Design Decisions
 
 - **Adapter pattern** with circuit breaker and fallback chain for resilient data sourcing
-- **Scope-based permissions** using `domain:resource:action` (e.g. `gse:live_prices:read`)
-- **Schema isolation** — each domain gets its own Postgres schema
+- **Scope-based permissions** using `namespace:resource:action` (e.g. `gse:live_prices:read`)
+- **Schema isolation** — each namespace gets its own Postgres schema
 - **API key auth** — the platform enforces scopes but doesn't manage users or billing
 
-## Adding a New Domain
+## Adding a New Namespace
 
-See [Section 20](MCP_PLATFORM_SOLUTION_DESIGN_v2.md#20-adding-a-new-domain-module) of the solution design doc.
+See [Section 20](MCP_PLATFORM_SOLUTION_DESIGN_v2.md#20-adding-a-new-namespace-module) of the solution design doc.
 
 ## Deployment
 
-Production runs on [Fly.io](https://fly.io). Each domain is a separate Fly app sharing managed Postgres and Redis. See [Section 17](MCP_PLATFORM_SOLUTION_DESIGN_v2.md#17-deployment) for details.
+Production runs on [Fly.io](https://fly.io). Each namespace is a separate Fly app sharing managed Postgres and Redis. See [Section 17](MCP_PLATFORM_SOLUTION_DESIGN_v2.md#17-deployment) for details.
 
 ## License
 

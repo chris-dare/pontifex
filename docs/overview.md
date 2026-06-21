@@ -67,7 +67,7 @@ flowchart TB
 
 -   :material-key-chain:{ .lg .middle } __Least privilege, enforced__
 
-    Scopes are `domain:resource:action`, declared per tool. A caller cannot widen their
+    Scopes are `namespace:resource:action`, declared per tool. A caller cannot widen their
     own access at runtime.
 
 -   :material-clipboard-text-clock:{ .lg .middle } __Audit you can hand to a reviewer__
@@ -100,7 +100,7 @@ The SDK gives you a server. Pontifex makes it safe to run on real systems.
 | --- | --- | --- |
 | Define and serve tools | ✅ | ✅ (built on it) |
 | Authenticate callers | — | ✅ API keys + OAuth 2.1 |
-| Per-caller scopes | — | ✅ `domain:resource:action` |
+| Per-caller scopes | — | ✅ `namespace:resource:action` |
 | Audit log | — | ✅ every call, to Postgres |
 | Rate limiting | — | ✅ per caller |
 | Resilience (failover, breakers) | — | ✅ |

@@ -70,7 +70,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 `pontifex-mcp` (the library in `core/`) is the product: a Python package for building enterprise-grade MCP servers — auth, scopes, audit, resilience, observability — on top of the official MCP Python SDK. Published to PyPI as [`pontifex-mcp`](https://pypi.org/project/pontifex-mcp/).
 
-The GSE (Ghana Stock Exchange) module under `domains/gse/` is a **worked example** that demonstrates the library — not a shipping product. "Pontifex" the managed service does not exist yet; today the repo is the open-source library plus its demo domain.
+The GSE (Ghana Stock Exchange) module under `examples/gse/` is a **worked example** that demonstrates the library — not a shipping product. "Pontifex" the managed service does not exist yet; today the repo is the open-source library plus its demo namespace.
 
 Full architecture: see `SOLUTION_DESIGN.md`
 
@@ -96,7 +96,7 @@ Full architecture: see `SOLUTION_DESIGN.md`
 - Build the package: `uv build --package pontifex-mcp`
 - Dev server (GSE demo): `uv run uvicorn gse_mcp.main:app --reload --port 8080`
 - Test: `uv run pytest`
-- Test single: `uv run pytest tests/domains/gse/test_tools.py -k test_live_prices`
+- Test single: `uv run pytest tests/examples/gse/test_tools.py -k test_live_prices`
 - Lint: `uv run ruff check .`
 - Format: `uv run ruff format .`
 - Type check: `uv run ty check`
@@ -112,20 +112,20 @@ pontifex/
 ├── uv.lock            # Single lockfile, committed
 ├── core/pontifex_mcp/     # The pontifex-mcp library (published to PyPI) — auth, cache, audit, circuit breaker
 │                      #   incl. migrations/ (core schema, shipped in the wheel; `pontifex-mcp db upgrade`)
-├── domains/gse/gse_mcp/  # GSE demo domain — tools, adapters, models
-├── alembic/           # Monorepo migration config: in-package core branch + alembic/domains/gse/
-├── tests/             # tests/core/ + tests/domains/gse/
+├── examples/gse/gse_mcp/  # GSE demo namespace — tools, adapters, models
+├── alembic/           # Monorepo migration config: in-package core branch + alembic/examples/gse/
+├── tests/             # tests/core/ + tests/examples/gse/
 ├── deploy/            # Dockerfiles, fly.toml
 └── scripts/           # seed_db, export_audit_logs, health_check
 ```
 
 ### Architecture Rules
 
-- **Core vs domain:** Core has zero domain knowledge. If it mentions "stock", "price", or "GSE", it's in the wrong place.
+- **Core vs namespace:** Core has zero domain knowledge. If it mentions "stock", "price", or "GSE", it's in the wrong place.
 - **Adapter pattern:** All external API calls go through adapters implementing the `DataAdapter` protocol. Never call an external API directly from a tool handler.
-- **Adding a domain:** New domain = new folder under `domains/`. Core requires zero changes.
-- **Schema isolation:** Each domain gets its own Postgres schema. Domain services cannot touch other domains' tables.
-- **Scope format:** Permission scopes use `domain:resource:action` (e.g. `gse:live_prices:read`). See `SOLUTION_DESIGN.md`.
+- **Adding a namespace:** New namespace = new folder under `examples/`. Core requires zero changes.
+- **Schema isolation:** Each namespace gets its own Postgres schema. A namespace's service cannot touch other namespaces' tables.
+- **Scope format:** Permission scopes use `namespace:resource:action` (e.g. `gse:live_prices:read`). See `SOLUTION_DESIGN.md`.
 
 ### Conventions
 
@@ -144,7 +144,7 @@ pontifex/
 - No sync SQLAlchemy — always `AsyncSession`
 - No raw SQL strings — always SQLAlchemy ORM
 - No hardcoded secrets — env vars via `pydantic-settings`
-- No domain logic in core
-- No core changes when adding a new domain module (flag it if you think core needs a change)
+- No namespace-specific logic in core
+- No core changes when adding a new namespace module (flag it if you think core needs a change)
 - No modifying alembic migration files — create new ones
 - No new dependencies without listing them and asking first

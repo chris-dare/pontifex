@@ -124,13 +124,13 @@ async def create(
     if not scope_list:
         fail("No scopes given. Pass --scopes like payments:balance:read.", ExitCode.USER_ERROR)
     for scope in scope_list:
-        # API-key scopes are enforced as the full domain:resource:action triple
+        # API-key scopes are enforced as the full namespace:resource:action triple
         # (wildcards allowed in resource/action). A 2-part scope or a bare `*`
         # would mint a key that can never match a tool — reject it at create time.
         parts = scope.split(":")
         if len(parts) != 3 or not all(p.strip() for p in parts):
             fail(
-                f"Invalid scope {scope!r}: API-key scopes are 'domain:resource:action' "
+                f"Invalid scope {scope!r}: API-key scopes are 'namespace:resource:action' "
                 "(e.g. payments:balance:read, payments:*:read, payments:*:*).",
                 ExitCode.USER_ERROR,
             )

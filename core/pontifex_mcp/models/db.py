@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # The same models run on both Postgres (production, Alembic-managed,
-# schema-per-domain) and SQLite (quickstart/local, create_all, no schemas).
+# schema-per-namespace) and SQLite (quickstart/local, create_all, no schemas).
 # Rather than downgrade the Postgres column types — which would diverge from the
 # existing migrations and force new ones — each Postgres-specific type is kept
 # via `.with_variant(..., "postgresql")` and falls back to a portable type on
@@ -66,7 +66,7 @@ class AuditLogModel(Base):
     # migration builds composite `(col, timestamp DESC)` indexes tuned for the
     # "latest rows for X" audit queries. Columns/nullability/keys stay in parity
     # across both dialects; only audit_log's index *shape* differs, by design.
-    domain: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    namespace: Mapped[str] = mapped_column(String, nullable=False, index=True)
     key_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     owner_label: Mapped[str] = mapped_column(String, nullable=False)
@@ -88,11 +88,11 @@ class AuditLogModel(Base):
     delegated_audience: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
-class DomainRegistryModel(Base):
-    __tablename__ = "domain_registry"
+class NamespaceRegistryModel(Base):
+    __tablename__ = "namespace_registry"
     __table_args__ = {"schema": "pontifex_mcp_core"}
 
-    domain: Mapped[str] = mapped_column(String, primary_key=True)
+    namespace: Mapped[str] = mapped_column(String, primary_key=True)
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")

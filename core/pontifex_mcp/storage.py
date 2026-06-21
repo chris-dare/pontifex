@@ -8,7 +8,7 @@ Two dialects are supported, detected from the connection-string scheme:
     for Postgres, so for SQLite we translate `pontifex_mcp_core` → the default
     schema via `schema_translate_map`.
   - **Postgres** (`postgresql+asyncpg://...`) — production. Alembic owns the
-    schema (schema-per-domain isolation), so we never `create_all` here.
+    schema (schema-per-namespace isolation), so we never `create_all` here.
 
 `MySQL is intentionally unsupported.`
 """

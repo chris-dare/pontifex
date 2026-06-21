@@ -10,7 +10,7 @@ write by hand.
 ```yaml
 # connectors.yaml
 connectors:
-  - domain: orders
+  - namespace: orders
     spec: https://api.internal/openapi.json   # URL or file path; JSON or YAML
     base_url: https://api.internal
     auth:
@@ -56,13 +56,13 @@ boot:
 
 ## Scopes come for free
 
-Each generated tool requires a `domain:resource:action` scope, derived from the
+Each generated tool requires a `namespace:resource:action` scope, derived from the
 operation. Connector tools slot into the
 [scope model](../concepts/request-path.md#scopes) unchanged, wildcards and all.
 
 | Part | Derived from | `GET /orders/{order_id}` |
 | --- | --- | --- |
-| `domain` | the connector's `domain` | `orders` |
+| `namespace` | the connector's `namespace` | `orders` |
 | `resource` | first static path segment | `orders` |
 | `action` | the verb: GET→`read`, POST/PUT/PATCH→`write`, DELETE→`delete` | `read` |
 
@@ -71,7 +71,7 @@ call reaches the downstream API.
 
 ## Naming the tools
 
-Tools are named `{domain}_{operation_id}`, snake-cased. Specs with machine-generated
+Tools are named `{namespace}_{operation_id}`, snake-cased. Specs with machine-generated
 operationIds (FastAPI's defaults, for example) produce noisy names. Override them per
 operation:
 
@@ -97,7 +97,7 @@ curl http://localhost:8080/health/ready
 
 - **It booted.** A typo in `include` or `names` refuses to start, so a clean boot
   means every allowlisted operation resolved.
-- **The connector is healthy.** `/health/ready` lists it as `connector:<domain>` (e.g.
+- **The connector is healthy.** `/health/ready` lists it as `connector:<namespace>` (e.g.
   `connector:orders`).
 - **The tool is governed.** Calling it without `orders:orders:read` returns a `403`
   before it touches the downstream.
@@ -110,7 +110,7 @@ with your spec URL and the operations you want exposed:
 ```text
 Create a Pontifex connectors.yaml for the OpenAPI spec at <SPEC_URL>.
 
-- domain: <orders>
+- namespace: <orders>
 - base_url: <https://api.internal>
 - Expose ONLY these operations (allowlist): <GET /orders, GET /orders/{order_id}>
 - Downstream auth: bearer token from the env var <ORDERS_API_TOKEN>.

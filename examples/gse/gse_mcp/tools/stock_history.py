@@ -4,7 +4,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from pontifex_mcp import AuditWriter, InvalidInput, tool_runtime
 
 from gse_mcp.data import AllSourcesUnavailable, GSEDataService
-from gse_mcp.tools._helpers import DOMAIN, envelope
+from gse_mcp.tools._helpers import NAMESPACE, envelope
 
 DESCRIPTION = "Get historical end-of-day prices for a GSE-listed stock."
 
@@ -12,7 +12,7 @@ DESCRIPTION = "Get historical end-of-day prices for a GSE-listed stock."
 def register(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> None:
     @mcp.tool(name="gse_get_stock_history", description=DESCRIPTION, structured_output=False)
     @tool_runtime(
-        domain=DOMAIN,
+        namespace=NAMESPACE,
         tool_name="gse_get_stock_history",
         resource="stock_history",
         action="read",

@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 # iterate) means an empty/half-built schema can't pass vacuously, and adding a
 # table to the models without a migration — or vice versa — fails until someone
 # updates this set on purpose.
-_EXPECTED_TABLES = {"api_keys", "audit_log", "domain_registry"}
+_EXPECTED_TABLES = {"api_keys", "audit_log", "namespace_registry"}
 _SCHEMA = "pontifex_mcp_core"
 
 

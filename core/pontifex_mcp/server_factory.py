@@ -1,4 +1,4 @@
-"""Transport wiring for an MCP domain server.
+"""Transport wiring for an MCP namespace server.
 
 Two entry points:
   - `create_mcp_http_app(...)` → FastAPI hosting a FastMCP server mounted at
@@ -30,7 +30,7 @@ from pontifex_mcp.observability.logfire_setup import setup_logfire
 
 
 def create_mcp_http_app(
-    domain_name: str,
+    namespace_name: str,
     settings: CoreSettings,
     register_tools: Callable[[FastMCP, AuditWriter], None],
     health_check: Callable[[], Awaitable[dict[str, Any]]],
@@ -64,7 +64,7 @@ def create_mcp_http_app(
         allowed_hosts=hosts,
     )
     mcp_server = FastMCP(
-        name=f"{domain_name}-mcp",
+        name=f"{namespace_name}-mcp",
         instructions=instructions,
         stateless_http=True,
         json_response=True,
@@ -79,7 +79,7 @@ def create_mcp_http_app(
         )
 
     return build_http_app(
-        domain_name,
+        namespace_name,
         mcp_server,
         settings,
         health_check,
@@ -88,7 +88,7 @@ def create_mcp_http_app(
 
 
 def build_http_app(
-    domain_name: str,
+    namespace_name: str,
     mcp_server: FastMCP,
     settings: CoreSettings,
     health_check: Callable[[], Awaitable[dict[str, Any]]],
@@ -138,10 +138,10 @@ def build_http_app(
                         if closer is not None:
                             await closer()
 
-    app = FastAPI(title=f"{domain_name}-mcp", lifespan=lifespan)
+    app = FastAPI(title=f"{namespace_name}-mcp", lifespan=lifespan)
 
     if settings.logfire_token:
-        setup_logfire(app, domain_name, settings.logfire_token)
+        setup_logfire(app, namespace_name, settings.logfire_token)
 
     if allow_anonymous:
         app.add_middleware(
@@ -171,8 +171,8 @@ def build_http_app(
     @app.get("/health/ready")
     async def readiness() -> dict[str, Any]:
         result = await health_check()
-        for connector_domain, manager in connector_managers.items():
-            result[f"connector:{connector_domain}"] = await manager.health_summary()
+        for connector_namespace, manager in connector_managers.items():
+            result[f"connector:{connector_namespace}"] = await manager.health_summary()
         return result
 
     # OAuth 2.0 Protected Resource Metadata (RFC 9728).  MCP clients fetch
@@ -203,7 +203,7 @@ def build_http_app(
 
 
 def run_mcp_stdio(
-    domain_name: str,
+    namespace_name: str,
     settings: CoreSettings,
     register_tools: Callable[[FastMCP, AuditWriter], None],
     *,
@@ -231,7 +231,7 @@ def run_mcp_stdio(
         )
     set_stdio_caller(identity)
 
-    mcp_server = FastMCP(name=f"{domain_name}-mcp", instructions=instructions)
+    mcp_server = FastMCP(name=f"{namespace_name}-mcp", instructions=instructions)
     if audit is None:
         audit = NoopAuditWriter()
     register_tools(mcp_server, audit)

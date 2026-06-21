@@ -34,7 +34,7 @@ def config_path(tmp_path):
             {
                 "connectors": [
                     {
-                        "domain": "orders",
+                        "namespace": "orders",
                         "spec": str(spec_path),
                         "base_url": "https://api.test",
                         "include": ["GET /orders", "GET /orders/{order_id}"],
@@ -52,7 +52,7 @@ def test_load_connectors_config(config_path):
     config = load_connectors_config(config_path)
     assert len(config.connectors) == 1
     entry = config.connectors[0]
-    assert entry.domain == "orders"
+    assert entry.namespace == "orders"
     assert entry.allow_mutations is False
     assert entry.auth is not None
     assert entry.auth.type == "bearer_env"

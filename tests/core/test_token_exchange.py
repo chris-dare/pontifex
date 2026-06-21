@@ -128,7 +128,7 @@ async def test_adapter_close_cascades_to_token_exchange(monkeypatch):
     from pontifex_mcp.connectors.adapter import OpenAPIAdapter
 
     te = _make(monkeypatch)
-    adapter = OpenAPIAdapter(domain="billing", base_url="https://api.test", auth=te)
+    adapter = OpenAPIAdapter(namespace="billing", base_url="https://api.test", auth=te)
     await adapter.close()
     assert adapter._client.is_closed
     assert te._client.is_closed

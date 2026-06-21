@@ -65,7 +65,7 @@ async def test_sqlite_roundtrip_audit_and_apikey():
         s.add(
             AuditLogModel(
                 timestamp=datetime.now(UTC),
-                domain="payments",
+                namespace="payments",
                 key_id="k",
                 owner_id="o",
                 owner_label="L",

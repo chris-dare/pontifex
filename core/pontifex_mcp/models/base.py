@@ -23,7 +23,7 @@ class AuditRecord(BaseModel):
     """In-memory representation before writing to Postgres."""
 
     timestamp: datetime
-    domain: str
+    namespace: str
     key_id: str
     owner_id: str
     owner_label: str

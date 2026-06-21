@@ -69,7 +69,7 @@ def _build(monkeypatch) -> tuple[FastMCP, _RecordingAudit]:
     register_openapi_tools(
         mcp,
         spec=SPEC,
-        domain="orders",
+        namespace="orders",
         base_url=BASE_URL,
         audit=audit,
         include=["GET /orders"],
@@ -194,7 +194,7 @@ def _build_with_manager(monkeypatch):
     manager = register_openapi_tools(
         mcp,
         spec=SPEC,
-        domain="orders",
+        namespace="orders",
         base_url=BASE_URL,
         audit=_RecordingAudit(),
         include=["GET /orders"],

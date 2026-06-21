@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ARRAY, JSON, BigInteger, Boolean, DateTime, Integer, String, func
+from sqlalchemy import ARRAY, JSON, BigInteger, Boolean, DateTime, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -29,8 +29,15 @@ class ApiKeyModel(Base):
     scopes: Mapped[list[str]] = mapped_column(
         JSON().with_variant(ARRAY(String), "postgresql"), nullable=False
     )
-    rate_limit_rpm: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # server_default mirrors the migration so a raw INSERT (the upstream platform
+    # may write keys directly, per SOLUTION_DESIGN) gets the same default on the
+    # SQLite floor as on Postgres. `default` stays for the ORM-side path.
+    rate_limit_rpm: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=60, server_default="60"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -87,7 +94,9 @@ class DomainRegistryModel(Base):
 
     domain: Mapped[str] = mapped_column(String, primary_key=True)
     display_name: Mapped[str] = mapped_column(String, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     config_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

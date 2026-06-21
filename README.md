@@ -16,6 +16,7 @@ AI agents are ready to do real work against your systems. What the MCP SDK gives
 - **Resilient** — per-caller rate limiting, adapter failover, circuit breaking.
 - **Observable** — Logfire / OpenTelemetry tracing and metrics wired in.
 - **Built on the MCP SDK** — keep its tools, protocol, and transports; add the controls a production server needs.
+- **Coding-agent friendly** — bundles an official agent skill (`uvx library-skills`) so your coding agent builds on guidance that matches your installed version.
 
 ## Install
 

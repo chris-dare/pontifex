@@ -12,7 +12,7 @@ dist/
 build/
 .coverage
 .prompts/
-.agents/
+/.agents/
 .claude/skills/*
 
 # Zensical docs build output

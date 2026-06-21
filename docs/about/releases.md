@@ -19,12 +19,17 @@ top level and you're on the supported path.
 
 ## Versioning
 
-Releases follow semantic versioning. While the library is pre-1.0, treat minor
-versions as potentially breaking, and pin the version you depend on.
+Releases follow semantic versioning. Pontifex is in active development, and we keep
+upgrades boring. Most releases add things and leave your tools, scopes, and API keys
+working as they were. A change that has to break compatibility lands in a minor version,
+with step-by-step migration in the [Upgrading](upgrading.md) guide. Pin the version you
+depend on.
 
 Each release is published as a **GitHub Release** with notes describing what changed
 and a compare link to the previous tag. That's the changelog. There's no separate
 `CHANGELOG.md` to drift out of sync.
+
+[**Release notes on GitHub →**](https://github.com/chris-dare/pontifex/releases)
 
 ## License
 

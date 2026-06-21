@@ -45,10 +45,27 @@ async def _engine_for(url: str) -> AsyncEngine:
     return engine
 
 
+def _is_missing_table(exc: Exception) -> bool:
+    """True for Postgres 'undefined table' (SQLSTATE 42P01) — the schema hasn't
+    been migrated yet. Reads the stable SQLSTATE off the wrapped DBAPI error
+    rather than matching message text, so it survives driver/version changes.
+    """
+    orig = getattr(exc, "orig", None)
+    code = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    return code == "42P01"
+
+
 def _db_fail(exc: Exception) -> NoReturn:
+    if _is_missing_table(exc):
+        # The common first-run slip: Postgres reached, but `db upgrade` not run.
+        # A clean one-liner beats dumping the INSERT + bound params at the user.
+        fail(
+            "The database schema isn't set up yet. Run `pontifex-mcp db upgrade` first.",
+            ExitCode.INFRA_ERROR,
+        )
     fail(
-        f"Could not reach or write to the database: {exc}\n"
-        "Check DATABASE_URL is reachable; on Postgres run `pontifex-mcp db upgrade` first.",
+        f"Could not reach the database: {exc}\n"
+        "Check DATABASE_URL points at a running database and the credentials are valid.",
         ExitCode.INFRA_ERROR,
     )
 

@@ -161,3 +161,37 @@ def test_keys_create_missing_database_url_exits_infra(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "d:a:b"])
     assert result.exit_code == int(ExitCode.INFRA_ERROR)
+
+
+class _PgError(Exception):
+    """Mimics a SQLAlchemy DBAPI error: the wrapped `orig` carries a SQLSTATE."""
+
+    def __init__(self, message, sqlstate):
+        super().__init__(message)
+        self.orig = type("Orig", (), {"sqlstate": sqlstate})()
+
+
+def test_db_fail_missing_table_gives_clean_hint(capsys):
+    """Postgres 'undefined table' (42P01) → a one-liner pointing at db upgrade,
+    not the raw INSERT + bound params."""
+    import typer
+    from pontifex_mcp.cli.keys import _db_fail
+
+    with pytest.raises(typer.Exit):
+        _db_fail(_PgError('relation "pontifex_mcp_core.api_keys" does not exist', "42P01"))
+    err = capsys.readouterr().err
+    assert "schema isn't set up yet" in err
+    assert "db upgrade" in err
+    assert "INSERT INTO" not in err  # no SQL dump
+
+
+def test_db_fail_other_error_keeps_detail(capsys):
+    """A non-missing-table failure (e.g. connection refused) keeps the detail."""
+    import typer
+    from pontifex_mcp.cli.keys import _db_fail
+
+    with pytest.raises(typer.Exit):
+        _db_fail(_PgError("connection refused", "08006"))
+    err = capsys.readouterr().err
+    assert "Could not reach the database" in err
+    assert "schema isn't set up" not in err

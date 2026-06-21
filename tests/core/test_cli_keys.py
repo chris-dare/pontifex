@@ -108,6 +108,46 @@ def test_revoke_missing_key_is_user_error(db):
     assert "No key" in result.output
 
 
+class _FakeRedis:
+    def __init__(self):
+        self.deleted = []
+
+    async def delete(self, key):
+        self.deleted.append(key)
+
+    async def aclose(self):
+        pass
+
+
+def test_revoke_invalidates_redis_cache(db, monkeypatch):
+    """With REDIS_URL set, revoke must clear the resolver's `apikey:<hash>` entry
+    so the key stops authenticating immediately, not after the cache TTL."""
+    import redis.asyncio
+
+    runner.invoke(
+        app,
+        [
+            "keys",
+            "create",
+            "--owner",
+            "a",
+            "--scopes",
+            "x:y",
+            "--key-id",
+            "key_a",
+            "--key-plaintext",
+            "sk_a",
+        ],  # gitleaks:allow
+    )
+    fake = _FakeRedis()
+    monkeypatch.setattr(redis.asyncio, "from_url", lambda _url: fake)
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+
+    result = runner.invoke(app, ["keys", "revoke", "key_a"])
+    assert result.exit_code == 0
+    assert fake.deleted == [f"apikey:{hash_key('sk_a')}"]  # gitleaks:allow
+
+
 def test_keys_create_missing_database_url_exits_infra(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "a:b"])

@@ -4,6 +4,7 @@ Works against whatever `DATABASE_URL` points at (SQLite or Postgres). The
 plaintext key is shown once on create; only its SHA-256 hash is stored.
 """
 
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import NoReturn
@@ -50,6 +51,32 @@ def _db_fail(exc: Exception) -> NoReturn:
         "Check DATABASE_URL is reachable; on Postgres run `pontifex-mcp db upgrade` first.",
         ExitCode.INFRA_ERROR,
     )
+
+
+async def _invalidate_resolver_cache(key_hash: str) -> None:
+    """Drop the resolver's `apikey:<hash>` Redis entry so a revoke takes effect
+    immediately, not after the lookup cache TTL.
+
+    Best-effort: the DB revoke has already committed, so a Redis hiccup here must
+    not fail the command — the entry just expires on its own TTL instead.
+    """
+    redis_url = os.environ.get("REDIS_URL")
+    if not redis_url:
+        return
+    import redis.asyncio as redis
+    from redis.exceptions import RedisError
+
+    client = redis.from_url(redis_url)
+    try:
+        await client.delete(f"apikey:{key_hash}")
+    except (OSError, RedisError) as exc:
+        typer.echo(
+            f"warning: revoked in the database, but could not clear the Redis cache "
+            f"entry ({exc}); it expires on its own within the cache TTL.",
+            err=True,
+        )
+    finally:
+        await client.aclose()
 
 
 @app.command()
@@ -184,9 +211,14 @@ async def revoke(
     key_id: str = typer.Argument(..., help="The key_id to revoke (from `keys list`)."),
     json_output: bool = typer.Option(False, "--json", help="Emit the result as JSON."),
 ) -> None:
-    """Revoke a key. Soft delete (is_active=False) so audit history is preserved."""
+    """Revoke a key. Soft delete (is_active=False) so audit history is preserved.
+
+    Takes effect immediately: the resolver's Redis cache entry is cleared too, so
+    a revoked key stops authenticating at once rather than after the cache TTL.
+    """
     url = normalize_db_url(resolve_database_url())
     engine = await _engine_for(url)
+    key_hash = ""
     try:
         async with AsyncSession(engine) as session:
             row = (
@@ -197,12 +229,15 @@ async def revoke(
                     f"No key with key_id '{key_id}'. Run `pontifex-mcp keys list` to see them.",
                     ExitCode.USER_ERROR,
                 )
+            key_hash = row.key_hash
             row.is_active = False
             await session.commit()
     except (OSError, SQLAlchemyError) as exc:
         _db_fail(exc)
     finally:
         await engine.dispose()
+
+    await _invalidate_resolver_cache(key_hash)
 
     if json_output:
         print_json({"key_id": key_id, "status": "revoked"})

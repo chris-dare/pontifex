@@ -15,10 +15,11 @@ metadata:
 Build enterprise-grade MCP servers in Python: authentication, `namespace:resource:action`
 scopes, audit logging, caching, and resilient adapters, layered on the official MCP SDK.
 
-`PontifexMCP` is a drop-in subclass of the SDK's `FastMCP`. Everything enterprise is
-**opt-in and defaults to zero infrastructure** — a bare server needs no database, Redis,
-or auth. You add capabilities one keyword argument at a time, and the same code runs from
-a laptop (SQLite) to production (Postgres + Redis) with only environment changes.
+`PontifexMCP` is a drop-in subclass of the SDK's `FastMCP`. The enterprise features are
+**opt-in and default to zero extra infrastructure** — a bare server needs no database,
+Redis, or auth. You add capabilities one keyword argument at a time, and the same code
+runs from a laptop (SQLite) to production (Postgres + Redis) with only configuration
+changes.
 
 ## When to use
 
@@ -41,8 +42,9 @@ Requires Python 3.12+. Pydantic v2, async throughout.
   keys are namespaced by it.
 - `auth=` enables enforcement, `audit=` sets where calls are logged, `cache=` wires Redis.
   Omit them and you get an open, stdout-audited, uncached server.
-- Infra (DB, Redis, JWKS, port, host) is read from **environment variables**, so
-  laptop → prod is a config change, not a code change.
+- Infra (DB, Redis, JWKS, port, host) comes from `CoreSettings`, which reads
+  environment variables by default, so laptop → prod is usually a config change,
+  not a code change.
 
 ## Build a server
 
@@ -94,7 +96,8 @@ mcp = PontifexMCP("payments", auth=ApiKeyAuth())
 - `JwtAuth()` validates OAuth 2.1 / JWT access tokens from any OIDC provider (Auth0, Entra,
   Keycloak, …), reading `AUTH_*` env vars (including `AUTH_JWKS_URL`). See the
   "Authenticate callers" guide for the full variable set.
-- Both resolve every caller to the same identity and flow through the same scope check.
+- Both resolve authenticated callers to the same `CallerIdentity` type and flow
+  through the same scope check.
 
 **SQLite floor → Postgres is a config change, not a code change.** Start local:
 

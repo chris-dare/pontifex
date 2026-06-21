@@ -53,7 +53,7 @@ def test_create_mints_key_and_stores_only_the_hash(db):
 
 
 def test_create_generates_random_key_when_no_plaintext(db):
-    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "a:b"])
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "d:a:b"])
     assert result.exit_code == 0
     assert "sk_live_" in result.output
 
@@ -63,8 +63,17 @@ def test_create_rejects_empty_scopes(db):
     assert result.exit_code == int(ExitCode.USER_ERROR)
 
 
+@pytest.mark.parametrize("bad_scope", ["balance:read", "*", "payments:balance:", "payments::read"])
+def test_create_rejects_malformed_scope(db, bad_scope):
+    """API-key scopes must be the full domain:resource:action triple. A 2-part
+    scope or a bare `*` would mint a key that can never match a tool — reject it."""
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", bad_scope])
+    assert result.exit_code == int(ExitCode.USER_ERROR)
+    assert "Invalid scope" in result.output
+
+
 def test_create_duplicate_key_id_is_user_error(db):
-    args = ["keys", "create", "--owner", "u", "--scopes", "a:b", "--key-id", "key_dup"]
+    args = ["keys", "create", "--owner", "u", "--scopes", "d:a:b", "--key-id", "key_dup"]
     assert runner.invoke(app, args).exit_code == 0
     dup = runner.invoke(app, args)
     assert dup.exit_code == int(ExitCode.USER_ERROR)
@@ -72,8 +81,8 @@ def test_create_duplicate_key_id_is_user_error(db):
 
 
 def test_list_shows_keys_and_hides_revoked(db):
-    runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "x:y", "--key-id", "key_a"])
-    runner.invoke(app, ["keys", "create", "--owner", "b", "--scopes", "x:y", "--key-id", "key_b"])
+    runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "d:x:y", "--key-id", "key_a"])
+    runner.invoke(app, ["keys", "create", "--owner", "b", "--scopes", "d:x:y", "--key-id", "key_b"])
     runner.invoke(app, ["keys", "revoke", "key_b"])
 
     listed = runner.invoke(app, ["keys", "list"])
@@ -93,7 +102,7 @@ def test_list_empty_is_clean(db):
 
 
 def test_revoke_soft_deletes(db):
-    runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "x:y", "--key-id", "key_a"])
+    runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "d:x:y", "--key-id", "key_a"])
     result = runner.invoke(app, ["keys", "revoke", "key_a"])
     assert result.exit_code == 0
     # Soft delete: row stays, is_active flips to 0 (audit history preserved).
@@ -132,7 +141,7 @@ def test_revoke_invalidates_redis_cache(db, monkeypatch):
             "--owner",
             "a",
             "--scopes",
-            "x:y",
+            "d:x:y",
             "--key-id",
             "key_a",
             "--key-plaintext",
@@ -150,5 +159,5 @@ def test_revoke_invalidates_redis_cache(db, monkeypatch):
 
 def test_keys_create_missing_database_url_exits_infra(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "a:b"])
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "d:a:b"])
     assert result.exit_code == int(ExitCode.INFRA_ERROR)

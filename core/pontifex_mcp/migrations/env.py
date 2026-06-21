@@ -18,6 +18,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+from pontifex_mcp.migrations.lock import lock_for_migration
 
 config = context.config
 
@@ -51,6 +52,9 @@ def do_run_migrations(connection) -> None:
         include_schemas=True,
     )
     with context.begin_transaction():
+        # Serialize concurrent `db upgrade` runs (e.g. several replicas booting at
+        # once). Postgres-only; a no-op on SQLite.
+        lock_for_migration(connection)
         context.run_migrations()
 
 

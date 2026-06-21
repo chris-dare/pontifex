@@ -10,9 +10,9 @@ Callers present API keys (or OAuth 2.1 tokens) carrying fine-grained permission 
 
 ### 1.1 Scope
 
-**Today:** The open-source `pontifex-mcp` library — authentication (API keys + OAuth 2.1), `domain:resource:action` scopes, audit, caching, resilience, observability — plus the GSE domain as a worked example. Usable directly, or behind any system that provisions API keys.
+**Today:** The open-source `pontifex-mcp` library — authentication (API keys + OAuth 2.1), `domain:resource:action` scopes, audit, caching, resilience, observability — plus a `pontifex-mcp` CLI for schema migrations and API-key lifecycle (create / list / revoke), and the GSE domain as a worked example. It runs with zero infrastructure on a local SQLite floor (Redis optional) and scales to Postgres + Redis in production. Usable directly, or behind any system that provisions API keys.
 
-**Ahead:** A growing set of governance capabilities (key lifecycle, approval workflows, data masking, audit export, auto-generated connectors) and more example domains as use cases appear. The architecture already supports any number of domains — each a self-contained module deployed independently. Other domains named in this doc (GFI, NGX, logistics) are illustrative only.
+**Ahead:** A growing set of governance capabilities (approval workflows, data masking, audit export, auto-generated connectors) and more example domains as use cases appear. The architecture already supports any number of domains — each a self-contained module deployed independently. Other domains named in this doc (GFI, NGX, logistics) are illustrative only.
 
 The foundation is solid; the capability set is deliberately focused and expands as use cases appear.
 
@@ -72,7 +72,7 @@ The foundation is solid; the capability set is deliberately focused and expands 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-`pontifex-mcp` is a **library**, not a service. A server built with it authenticates callers, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the job of whatever provisions the keys above it. That upstream system writes API key records (with scopes) to `pontifex_mcp_core.api_keys`; the server reads them and enforces the scopes.
+`pontifex-mcp` is a **library**, not a service. A server built with it authenticates callers, enforces permission scopes, and serves data. It does not manage users, plans, or billing — that's the job of whatever provisions the keys above it. Keys reach `pontifex_mcp_core.api_keys` one of two ways: the bundled `pontifex-mcp keys` CLI (§11.8), or an upstream system that writes records directly as part of its own billing or admin flow (the topology drawn above). Either way the server only reads the rows and enforces their scopes.
 
 ---
 
@@ -90,20 +90,16 @@ pontifex/
 ├── SOLUTION_DESIGN.md
 ├── docker-compose.yml                      # Dev: all services + Redis + Postgres
 │
-├── alembic/                                # DB migrations (split by schema)
-│   ├── alembic.ini
-│   ├── env.py                              # Runs core + domain migrations in order
-│   ├── core/                               # pontifex_mcp_core schema migrations
-│   │   └── versions/
-│   │       ├── 001_create_api_keys.py
-│   │       ├── 002_create_audit_log.py
-│   │       └── 003_create_domain_registry.py
+├── alembic/                                # Monorepo migration config (demo domain branch)
+│   ├── alembic.ini                         # Points at the in-package core branch + gse
 │   └── domains/                            # Per-domain schema migrations
 │       └── gse/
 │           └── versions/
 │               ├── 001_create_symbols.py
 │               ├── 002_create_historical_prices.py
-│               └── 003_create_cached_prices.py
+│               └── 003_create_cached_eod_prices.py
+│                                           # Core schema migrations ship in the wheel
+│                                           # (core/pontifex_mcp/migrations/, see §14.6)
 │
 ├── core/                                   # ── Shared library (pontifex-mcp) ──
 │   ├── pyproject.toml                      # [build-system] uses uv_build
@@ -112,6 +108,17 @@ pontifex/
 │       ├── py.typed                        # Type checker marker
 │       ├── server_factory.py               # Creates configured MCP server from parts
 │       ├── config.py                       # Base settings all domains inherit
+│       ├── storage.py                      # DB engine + dialect detection (SQLite floor ↔ Postgres)
+│       │
+│       ├── cli/                            # `pontifex-mcp` CLI (Typer entry point)
+│       │   ├── __init__.py
+│       │   ├── db.py                       # `db upgrade` — migrations (PG) / create_all (SQLite)
+│       │   └── keys.py                     # `keys create | list | revoke`
+│       │
+│       ├── migrations/                     # Core schema migrations — shipped in the wheel
+│       │   ├── alembic.ini                 # %(here)s paths; `db upgrade` loads this
+│       │   ├── env.py                      # Reads DATABASE_URL; advisory-locks the upgrade
+│       │   └── versions/
 │       │
 │       ├── auth/
 │       │   ├── __init__.py
@@ -136,7 +143,7 @@ pontifex/
 │       ├── models/
 │       │   ├── __init__.py
 │       │   ├── base.py                     # ToolResponse, AuditRecord, ToolError (Pydantic)
-│       │   └── db.py                       # SQLAlchemy: audit_log, api_keys
+│       │   └── db.py                       # SQLAlchemy: api_keys, audit_log, domain_registry
 │       │
 │       ├── observability/
 │       │   ├── __init__.py
@@ -1016,7 +1023,7 @@ All domains share a single Redis instance. Key collision is impossible because o
 
 `pontifex-mcp` authenticates callers and enforces permission scopes. It does not manage users, billing, or plans. It accepts **two credential types**, and both resolve to the same `CallerIdentity` and flow through the same scope enforcement:
 
-1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. `pontifex-mcp` is a read-only consumer of `pontifex_mcp_core.api_keys`, which an upstream system (SaaS dashboard, enterprise admin panel, CLI tool, config file) provisions.
+1. **API keys** (§11.3–11.5) — `sk_…` bearer tokens for scripts, CI, and service-to-service callers. Keys live in `pontifex_mcp_core.api_keys`, provisioned either by the bundled `pontifex-mcp keys` CLI or by an upstream system (SaaS dashboard, enterprise admin panel, config loader) that writes records directly (§11.8).
 2. **OAuth 2.1 access tokens, represented as JWTs** (RFC 9068; §11.9–11.13) — bearer tokens minted by an external OIDC provider (Auth0, Microsoft Entra, Clerk, Keycloak, …) for interactive MCP clients (Claude Desktop, Cursor, …) that log the end-user in through a browser. (OAuth itself permits opaque access tokens; this platform validates the JWT profile.)
 
 The middleware picks the path by token shape (§11.10) and emits an identical `CallerIdentity` either way, so scopes (§11.2), enforcement (§11.6), and audit (§12) are the same regardless of how the caller authenticated.
@@ -1055,7 +1062,7 @@ A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data
 
 ### 11.3 API Key Format and Storage
 
-**Key format:** `sk_<env>_` prefix + 32 random bytes, base62-encoded — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The upstream platform generates keys, stores the SHA-256 hash in `pontifex_mcp_core.api_keys` along with the scopes, and shows the plaintext to the user once.
+**Key format:** `sk_<env>_` prefix + a high-entropy URL-safe random token — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The `pontifex-mcp keys create` CLI (or an upstream platform) generates the key, stores its SHA-256 hash in `pontifex_mcp_core.api_keys` along with the scopes, and shows the plaintext once.
 
 **Key record:**
 
@@ -1193,9 +1200,25 @@ scopes: ["gse:*:*"]
 rate_limit_rpm: 9999
 ```
 
-### 11.8 How the Upstream Platform Provisions Keys
+### 11.8 Provisioning Keys
 
-The upstream platform (your SaaS, an admin CLI, whatever) writes API key records to `pontifex_mcp_core.api_keys`. This is the only integration point. `pontifex-mcp` doesn't care how the upstream decided what scopes to assign — whether that was a billing plan, a manual admin decision, or a config file.
+Keys reach `pontifex_mcp_core.api_keys` two ways.
+
+**The bundled CLI** is the first-party path — no script to write. It works against whatever `DATABASE_URL` points at, the SQLite floor or Postgres:
+
+```console
+$ pontifex-mcp keys create --owner usr_kwame --label "Kwame's Claude Desktop" \
+    --scopes "gse:*:read,gse:stock_history:read" --rate-limit-rpm 120
+key_id:   key_usr_kwame
+api_key:  sk_live_…   (shown once — store it now)
+owner:    usr_kwame (Kwame's Claude Desktop)
+scopes:   gse:*:read, gse:stock_history:read
+expires:  never
+```
+
+It generates the key, stores only the SHA-256 hash, and prints the plaintext once. `keys list` shows every key (never the secret); `keys revoke <key_id>` soft-deletes it — preserving audit history — and clears the resolver's Redis cache so the revocation takes effect at once rather than after the lookup TTL.
+
+**Direct DB writes** are the integration path for a SaaS or admin platform that mints keys inside its own billing or onboarding flow. `pontifex-mcp` doesn't care how the upstream decided what scopes to assign — a billing plan, a manual admin decision, a config file. It reads the row and enforces it:
 
 ```python
 # Example: upstream platform creates a key (this code lives OUTSIDE pontifex-mcp)
@@ -1438,6 +1461,8 @@ When the gateway rejects a request (429), the MCP server never sees it — the g
 
 Same isolation model as the codebase: one shared `pontifex_mcp_core` schema for cross-cutting infrastructure tables, one schema per domain for domain-specific data. A bad migration in GFI cannot touch GSE's tables. All schemas live in a single PostgreSQL instance so cross-schema queries (e.g. "all audit records across all domains") remain simple joins.
 
+**Local floor.** Postgres is the production target, but the same SQLAlchemy models run on SQLite for the quickstart and local development. `pontifex-mcp db upgrade` detects the dialect: it applies the packaged Alembic migrations against Postgres, or builds the schema with `create_all` on SQLite (which has no named schemas, so `pontifex_mcp_core` collapses to the default namespace). Redis is optional in both modes — without it, the key-lookup cache and per-caller rate limiting are simply disabled and logged. A schema-parity test (`tests/core/test_schema_parity.py`) guards the two build paths against drift, so a key minted on the SQLite floor behaves the same once the deployment moves to Postgres.
+
 ### 14.2 Schema Layout
 
 ```
@@ -1467,7 +1492,7 @@ Note: there are no `users`, `tenants`, or `plans` tables. User management and bi
 CREATE SCHEMA IF NOT EXISTS pontifex_mcp_core;
 
 -- api_keys: the only auth table pontifex-mcp owns
--- Upstream platform (SaaS, admin CLI, config loader) writes rows here
+-- The `pontifex-mcp keys` CLI or an upstream platform (SaaS, config loader) writes rows here
 CREATE TABLE pontifex_mcp_core.api_keys (
     key_id          TEXT PRIMARY KEY,            -- e.g. 'key_abc123'
     key_hash        TEXT NOT NULL UNIQUE,        -- SHA-256 of the plaintext key
@@ -1592,9 +1617,10 @@ CREATE TABLE gse.data_quality_log (
 
 ### 14.5 Schema Permissions
 
-Two classes of database role for `pontifex-mcp` itself. The upstream platform writes to `pontifex_mcp_core.api_keys` using its own credentials (outside this product's scope).
+Two classes of runtime role for `pontifex-mcp` itself, plus a separate provisioning credential. Key provisioning — whether the `pontifex-mcp keys` CLI or an upstream platform — runs with a credential that holds `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. The domain service role holds no such grant beyond touching `last_used_at`: a running domain server reads keys to authenticate callers but cannot mint them or change their scopes, hashes, or activation, so a compromised server can't forge or escalate credentials.
 
-- **Domain services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys, write `pontifex_mcp_core.audit_log`, full access to their own domain schema.
+- **Domain services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys (with a column-scoped `UPDATE` on `last_used_at` only), write `pontifex_mcp_core.audit_log`, full access to their own domain schema. No other write access to `api_keys`.
+- **Provisioning** (the `keys` CLI, or an upstream platform using its own credentials): `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. Run from an operator context, not the serving path.
 - **Analytics** (`mcp_analytics`): Read-only on everything for dashboards and reporting.
 
 ```sql
@@ -2121,7 +2147,7 @@ The core library, auth, audit, caching, circuit breaker, observability, and heal
 2. **Data quality middleware** — compare across adapters before returning. Disagreement above threshold returns a warning flag.
 3. **Webhook notifications** — alerts when circuit breakers open or sources disagree.
 4. **Multi-region deployment** — active-passive in multiple regions for latency and availability.
-5. **Provisioning API** — optional REST API for upstream platforms to manage API keys programmatically (currently done via direct DB writes).
+5. **Provisioning REST API** — the `pontifex-mcp keys` CLI now covers operator and CI key management; a REST API would let upstream platforms manage keys programmatically without writing to the database directly.
 6. **Partial wildcards** — support patterns like `gse:*:read` (already supported) and potentially `gse:price_*:read` for resource-level wildcards.
 
 ---
@@ -2132,6 +2158,6 @@ Resolve before implementation:
 
 1. **GSE official feed** — Contact GSE data services (gse.com.gh/data-services) for pricing and endpoint details. Needed for a licensed adapter and for commercial redistribution.
 2. **Data redistribution** — kwayisi's terms are unclear on redistribution. For production use serving data externally, the GSE official feed should be the primary source.
-3. **Upstream integration pattern** — Will upstream platforms write API keys directly to Postgres, or should `pontifex-mcp` expose a provisioning API? Direct DB writes are simpler; an API is more portable.
+3. **Upstream integration pattern** — The `pontifex-mcp keys` CLI now handles operator and CI provisioning. Still open for SaaS integrators: keep writing API keys directly to Postgres, or expose a provisioning REST API? Direct DB writes are simpler; an API is more portable.
 4. **Additional domains** — Which domains are likely next after GSE? Non-market verticals (logistics, government APIs) would help validate that the core abstractions generalise beyond market data.
 5. **Upstream data source credentials** — Some future adapters will need to authenticate with their upstream APIs (API keys, OAuth tokens, client certificates). The adapter interface supports this today (pass credentials into the constructor), but there's no platform-level pattern yet for how those secrets are stored, rotated, or scoped. Decide when the first authenticated upstream is added: secrets manager (Vault, AWS Secrets Manager), encrypted env vars, or per-user "bring your own credentials" — each has different implications for the adapter and config layers.

@@ -111,9 +111,9 @@ jobs:
           sleep 4
 
           SYNC_URL="postgresql+asyncpg://$DB_USER:${{ env.FLY_POSTGRES_PASSWORD }}@127.0.0.1:15432/$DB_NAME"
-          DATABASE_URL="$SYNC_URL" uv run python scripts/create_api_key.py \
-            --owner-id usr_uat \
-            --owner-label "UAT PR #${{ github.event.pull_request.number }}" \
+          DATABASE_URL="$SYNC_URL" uv run pontifex-mcp keys create \
+            --owner usr_uat \
+            --label "UAT PR #${{ github.event.pull_request.number }}" \
             --scopes "gse:*:*" \
             --key-plaintext "${{ env.UAT_API_KEY_PLAINTEXT }}" \
             --key-id "key_uat_pr_${{ github.event.pull_request.number }}" \

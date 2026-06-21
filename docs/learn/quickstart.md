@@ -90,7 +90,7 @@ To wire it into Claude Desktop, Cursor, Zed, or any other MCP client:
 Audit logging is already active. Every call writes a structured line to stdout:
 
 ```
-2026-06-20 13:32:14 [info] tool_call  domain=payments tool=get_balance owner_id=anonymous response_ms=0 ip_address=127.0.0.1
+2026-06-20 13:32:14 [info     ] tool_call    cache_hit=False data_source=unknown delegated_audience=None domain=payments error=None ip_address=127.0.0.1 key_id=anonymous owner_id=anonymous owner_label=Anonymous params={} response_ms=0 tool=get_balance transport=http
 ```
 
 `owner_id=anonymous` because no auth backend is active yet. `scope="balance:read"`
@@ -192,6 +192,7 @@ response wraps the upstream JSON in a governed envelope:
 
 ```json
 {
+  "timestamp": "2026-06-20T13:45:02.118402+00:00",
   "source": "openapi:payments",
   "cache_hit": false,
   "status_code": 200,
@@ -234,73 +235,51 @@ if __name__ == "__main__":
     mcp.run(http=True)
 ```
 
-`ApiKeyAuth()` reads `DATABASE_URL` (key store) and `REDIS_URL` (lookup cache) from
-the environment. Need Postgres and Redis running? The quickest way to get both:
+`ApiKeyAuth()` reads `DATABASE_URL` (the key store) from the environment. The fastest
+path is a single SQLite file: no Postgres, no Redis, no Docker.
 
-=== "Docker / Podman"
+=== "SQLite (zero infra)"
+
+    ```bash
+    export DATABASE_URL=sqlite+aiosqlite:///pontifex.db
+    ```
+
+    Create the schema, then mint a key:
+
+    ```bash
+    pontifex-mcp db upgrade
+    pontifex-mcp keys create --owner user_kwame --scopes payments:balance:read --key-plaintext sk_dev_test
+    ```
+
+    `--key-plaintext` pins a predictable key for this tutorial. In practice, omit it
+    and Pontifex generates one (`sk_live_…`), printed once.
+
+=== "Postgres + Redis (production)"
+
+    Point `DATABASE_URL` at Postgres and set `REDIS_URL` to add the lookup cache and
+    per-caller rate limiting:
 
     ```bash
     docker run -d --name pg -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:16
     docker run -d --name redis -p 6379:6379 redis:7
-    ```
-
-    ```bash
     export DATABASE_URL=postgresql+asyncpg://postgres:dev@localhost:5432/postgres
     export REDIS_URL=redis://localhost:6379
     ```
 
-    Create the schema with the bundled migrations:
+    Then the same two commands:
 
     ```bash
     pontifex-mcp db upgrade
+    pontifex-mcp keys create --owner user_kwame --scopes payments:balance:read --key-plaintext sk_dev_test
     ```
 
-    Then seed a test API key (run this once):
+    Managed cloud works the same: [Neon](https://neon.tech) for Postgres,
+    [Upstash](https://upstash.com) for Redis. Swap the URLs, keep the commands.
 
-    ```python title="setup_dev_key.py"
-    import asyncio, hashlib, os
-    from pontifex_mcp.models.db import ApiKeyModel
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-
-    DB = os.environ["DATABASE_URL"]
-    KEY = "sk_dev_test"
-
-    async def seed():
-        engine = create_async_engine(DB)
-        async with AsyncSession(engine) as session:
-            session.add(ApiKeyModel(
-                key_id="key_dev",
-                key_hash=hashlib.sha256(KEY.encode()).hexdigest(),
-                owner_id="user_kwame",
-                owner_label="Kwame Mensah",
-                scopes=["payments:balance:read"],
-                rate_limit_rpm=60,
-                is_active=True,
-            ))
-            await session.commit()
-        print(f"Key created: {KEY}")
-        await engine.dispose()
-
-    asyncio.run(seed())
-    ```
-
-    ```bash
-    python setup_dev_key.py
-    ```
-
-=== "Managed cloud"
-
-    - **Postgres**: [Neon](https://neon.tech) has a free tier. Copy the
-      `postgresql://…` connection string and replace `postgresql://` with
-      `postgresql+asyncpg://`.
-    - **Redis**: [Upstash](https://upstash.com) or [Redis Cloud](https://redis.com/try-free/)
-      both have free tiers. Use the `redis://` or `rediss://` URL directly.
-
-    Run `pontifex-mcp db upgrade` then `setup_dev_key.py` from the Docker tab above,
-    substituting your managed URLs.
+Start the server:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://… REDIS_URL=redis://… python main.py
+python main.py
 ```
 
 One difference from step 1: with an auth backend active, the server binds to
@@ -314,7 +293,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
 Every request now needs an `Authorization: Bearer` header. A call without one returns:
 
 ```json
-{"error_code": "auth_failed", "message": "Missing 'Authorization: Bearer <token>' header.", "status": 401}
+{"error_code": "auth_failed", "message": "Missing 'Authorization: Bearer <token>' header.", "status": 401, "retry": false}
 ```
 
 Pass the key from your MCP client config:
@@ -405,7 +384,7 @@ docker exec redis redis-cli TTL payments:balance
 ```
 
 ```
-(integer) 29
+30
 ```
 
 A second call within 30 seconds returns the cached value without touching your upstream.

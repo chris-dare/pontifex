@@ -1,0 +1,210 @@
+"""`pontifex-mcp keys` — create / list / revoke, exercised against a SQLite file
+(the command works identically on Postgres; only the engine URL differs)."""
+
+import sqlite3
+
+import pytest
+from pontifex_mcp.auth.api_keys import hash_key
+from pontifex_mcp.cli import app
+from pontifex_mcp.cli._output import ExitCode
+from typer.testing import CliRunner
+
+runner = CliRunner()
+
+
+@pytest.fixture
+def db(tmp_path, monkeypatch):
+    path = tmp_path / "keys.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{path}")
+    return path
+
+
+def _rows(path):
+    return (
+        sqlite3.connect(path)
+        .execute("SELECT key_id, key_hash, owner_id, is_active FROM api_keys ORDER BY key_id")
+        .fetchall()
+    )
+
+
+def test_create_mints_key_and_stores_only_the_hash(db):
+    result = runner.invoke(
+        app,
+        [
+            "keys",
+            "create",
+            "--owner",
+            "usr_k",
+            "--scopes",
+            "payments:balance:read",
+            "--key-plaintext",
+            "sk_dev_x",
+        ],  # gitleaks:allow
+    )
+    assert result.exit_code == 0, result.output
+    assert "sk_dev_x" in result.output  # plaintext shown once
+
+    rows = _rows(db)
+    assert len(rows) == 1
+    key_id, key_hash, owner_id, is_active = rows[0]
+    assert (key_id, owner_id, is_active) == ("key_usr_k", "usr_k", 1)
+    assert key_hash == hash_key("sk_dev_x")  # hash stored...
+    assert "sk_dev_x" not in key_hash  # ...never the plaintext
+
+
+def test_create_generates_random_key_when_no_plaintext(db):
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "d:a:b"])
+    assert result.exit_code == 0
+    assert "sk_live_" in result.output
+
+
+def test_create_rejects_empty_scopes(db):
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", " , "])
+    assert result.exit_code == int(ExitCode.USER_ERROR)
+
+
+@pytest.mark.parametrize("bad_scope", ["balance:read", "*", "payments:balance:", "payments::read"])
+def test_create_rejects_malformed_scope(db, bad_scope):
+    """API-key scopes must be the full domain:resource:action triple. A 2-part
+    scope or a bare `*` would mint a key that can never match a tool — reject it."""
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", bad_scope])
+    assert result.exit_code == int(ExitCode.USER_ERROR)
+    assert "Invalid scope" in result.output
+
+
+def test_create_duplicate_key_id_is_user_error(db):
+    args = ["keys", "create", "--owner", "u", "--scopes", "d:a:b", "--key-id", "key_dup"]
+    assert runner.invoke(app, args).exit_code == 0
+    dup = runner.invoke(app, args)
+    assert dup.exit_code == int(ExitCode.USER_ERROR)
+    assert "already exists" in dup.output
+
+
+def test_create_duplicate_key_value_is_user_error(db):
+    """Reusing a plaintext (same hash) with a different key_id still conflicts.
+    The message must not claim the new, unused key_id already exists."""
+    base = ["keys", "create", "--owner", "u", "--scopes", "d:a:b", "--key-plaintext", "sk_x"]
+    assert runner.invoke(app, [*base, "--key-id", "key_a"]).exit_code == 0
+    dup = runner.invoke(app, [*base, "--key-id", "key_b"])
+    assert dup.exit_code == int(ExitCode.USER_ERROR)
+    assert "already exists" in dup.output
+
+
+def test_list_shows_keys_and_hides_revoked(db):
+    runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "d:x:y", "--key-id", "key_a"])
+    runner.invoke(app, ["keys", "create", "--owner", "b", "--scopes", "d:x:y", "--key-id", "key_b"])
+    runner.invoke(app, ["keys", "revoke", "key_b"])
+
+    listed = runner.invoke(app, ["keys", "list"])
+    assert listed.exit_code == 0
+    assert "key_a" in listed.output
+    assert "key_b" not in listed.output  # revoked hidden by default
+
+    all_keys = runner.invoke(app, ["keys", "list", "--all"])
+    assert "key_b" in all_keys.output
+    assert "revoked" in all_keys.output
+
+
+def test_list_empty_is_clean(db):
+    result = runner.invoke(app, ["keys", "list"])
+    assert result.exit_code == 0
+    assert "No keys" in result.output
+
+
+def test_revoke_soft_deletes(db):
+    runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "d:x:y", "--key-id", "key_a"])
+    result = runner.invoke(app, ["keys", "revoke", "key_a"])
+    assert result.exit_code == 0
+    # Soft delete: row stays, is_active flips to 0 (audit history preserved).
+    rows = _rows(db)
+    assert rows[0][0] == "key_a"
+    assert rows[0][3] == 0
+
+
+def test_revoke_missing_key_is_user_error(db):
+    result = runner.invoke(app, ["keys", "revoke", "key_nope"])
+    assert result.exit_code == int(ExitCode.USER_ERROR)
+    assert "No key" in result.output
+
+
+class _FakeRedis:
+    """Stand-in for the redis.asyncio client: records the keys passed to delete()
+    so a test can assert the revoke cleared the right cache entry."""
+
+    def __init__(self):
+        self.deleted = []
+
+    async def delete(self, key):
+        self.deleted.append(key)
+
+    async def aclose(self):
+        pass
+
+
+def test_revoke_invalidates_redis_cache(db, monkeypatch):
+    """With REDIS_URL set, revoke must clear the resolver's `apikey:<hash>` entry
+    so the key stops authenticating immediately, not after the cache TTL."""
+    import redis.asyncio
+
+    runner.invoke(
+        app,
+        [
+            "keys",
+            "create",
+            "--owner",
+            "a",
+            "--scopes",
+            "d:x:y",
+            "--key-id",
+            "key_a",
+            "--key-plaintext",
+            "sk_a",
+        ],  # gitleaks:allow
+    )
+    fake = _FakeRedis()
+    monkeypatch.setattr(redis.asyncio, "from_url", lambda _url: fake)
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+
+    result = runner.invoke(app, ["keys", "revoke", "key_a"])
+    assert result.exit_code == 0
+    assert fake.deleted == [f"apikey:{hash_key('sk_a')}"]  # gitleaks:allow
+
+
+def test_keys_create_missing_database_url_exits_infra(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", "d:a:b"])
+    assert result.exit_code == int(ExitCode.INFRA_ERROR)
+
+
+class _PgError(Exception):
+    """Mimics a SQLAlchemy DBAPI error: the wrapped `orig` carries a SQLSTATE."""
+
+    def __init__(self, message, sqlstate):
+        super().__init__(message)
+        self.orig = type("Orig", (), {"sqlstate": sqlstate})()
+
+
+def test_db_fail_missing_table_gives_clean_hint(capsys):
+    """Postgres 'undefined table' (42P01) → a one-liner pointing at db upgrade,
+    not the raw INSERT + bound params."""
+    import typer
+    from pontifex_mcp.cli.keys import _db_fail
+
+    with pytest.raises(typer.Exit):
+        _db_fail(_PgError('relation "pontifex_mcp_core.api_keys" does not exist', "42P01"))
+    err = capsys.readouterr().err
+    assert "schema isn't set up yet" in err
+    assert "db upgrade" in err
+    assert "INSERT INTO" not in err  # no SQL dump
+
+
+def test_db_fail_other_error_keeps_detail(capsys):
+    """A non-missing-table failure (e.g. connection refused) keeps the detail."""
+    import typer
+    from pontifex_mcp.cli.keys import _db_fail
+
+    with pytest.raises(typer.Exit):
+        _db_fail(_PgError("connection refused", "08006"))
+    err = capsys.readouterr().err
+    assert "Could not reach the database" in err
+    assert "schema isn't set up" not in err

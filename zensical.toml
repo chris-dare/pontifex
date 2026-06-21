@@ -32,6 +32,7 @@ nav = [
   ] },
   { "About" = [
     { "Versioning & releases" = "about/releases.md" },
+    { "Upgrading" = "about/upgrading.md" },
   ] },
 ]
 

@@ -26,6 +26,11 @@ Each release is published as a **GitHub Release** with notes describing what cha
 and a compare link to the previous tag. That's the changelog. There's no separate
 `CHANGELOG.md` to drift out of sync.
 
+[**Release notes on GitHub →**](https://github.com/chris-dare/pontifex/releases)
+
+When a release breaks something you depend on, the [Upgrading](upgrading.md) guide has the
+migration steps.
+
 ## License
 
 Apache-2.0. Use it, fork it, embed it in a commercial product. See the LICENSE file for the full terms.

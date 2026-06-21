@@ -541,7 +541,7 @@ wheels = [
 [[package]]
 name = "gse-mcp"
 version = "0.1.0"
-source = { editable = "domains/gse" }
+source = { editable = "examples/gse" }
 dependencies = [
     { name = "pontifex-mcp" },
 ]

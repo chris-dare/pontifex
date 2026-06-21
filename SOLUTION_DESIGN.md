@@ -2,17 +2,17 @@
 
 ## 1. Overview
 
-**`pontifex-mcp`** is a Python library for building enterprise-grade MCP (Model Context Protocol) servers — servers that expose your systems to AI agents without giving up control over who can call what. The library (`core/pontifex_mcp`, published to PyPI) is the product. It handles everything domain-agnostic: transport, authentication (API keys + OAuth 2.1 JWTs), scope-based permissions, caching, audit logging, circuit breaking, and observability. You write the tools; it governs every call.
+**`pontifex-mcp`** is a Python library for building enterprise-grade MCP (Model Context Protocol) servers — servers that expose your systems to AI agents without giving up control over who can call what. The library (`core/pontifex_mcp`, published to PyPI) is the product. It handles everything namespace-agnostic: transport, authentication (API keys + OAuth 2.1 JWTs), scope-based permissions, caching, audit logging, circuit breaking, and observability. You write the tools; it governs every call.
 
-You expose a system by writing a **domain module** — a self-contained set of tools and data adapters that plugs into the shared core. This repo ships one as a worked example: **Ghana Stock Exchange (GSE)** market data. It demonstrates the library against a real data source; it is a demo, not the product.
+You expose a system by writing a **namespace module** — a self-contained set of tools and data adapters that plugs into the shared core. This repo ships one as a worked example: **Ghana Stock Exchange (GSE)** market data. It demonstrates the library against a real data source; it is a demo, not the product.
 
 Callers present API keys (or OAuth 2.1 tokens) carrying fine-grained permission scopes (e.g. `gse:*:*`, `gse:live_prices:read`), and the library enforces them before any tool runs. It does not manage users, billing, or plan tiers — those are provisioned by whatever sits above it (your own admin tool, an enterprise panel, a config file, or, eventually, a managed "Pontifex" service that does not exist yet).
 
 ### 1.1 Scope
 
-**Today:** The open-source `pontifex-mcp` library — authentication (API keys + OAuth 2.1), `domain:resource:action` scopes, audit, caching, resilience, observability — plus a `pontifex-mcp` CLI for schema migrations and API-key lifecycle (create / list / revoke), and the GSE domain as a worked example. It runs with zero infrastructure on a local SQLite floor (Redis optional) and scales to Postgres + Redis in production. Usable directly, or behind any system that provisions API keys.
+**Today:** The open-source `pontifex-mcp` library — authentication (API keys + OAuth 2.1), `namespace:resource:action` scopes, audit, caching, resilience, observability — plus a `pontifex-mcp` CLI for schema migrations and API-key lifecycle (create / list / revoke), and the GSE namespace as a worked example. It runs with zero infrastructure on a local SQLite floor (Redis optional) and scales to Postgres + Redis in production. Usable directly, or behind any system that provisions API keys.
 
-**Ahead:** A growing set of governance capabilities (approval workflows, data masking, audit export, auto-generated connectors) and more example domains as use cases appear. The architecture already supports any number of domains — each a self-contained module deployed independently. Other domains named in this doc (GFI, NGX, logistics) are illustrative only.
+**Ahead:** A growing set of governance capabilities (approval workflows, data masking, audit export, auto-generated connectors) and more example namespaces as use cases appear. The architecture already supports any number of namespaces — each a self-contained module deployed independently. Other namespaces named in this doc (GFI, NGX, logistics) are illustrative only.
 
 The foundation is solid; the capability set is deliberately focused and expands as use cases appear.
 
@@ -22,7 +22,7 @@ The foundation is solid; the capability set is deliberately focused and expands 
 - API key + OAuth 2.1 auth with scope-based permissions; the library does not manage users, billing, or plans
 - All tool invocations must be logged with caller identity, timestamp, parameters, and response latency
 - External APIs may lack SLAs; the system must tolerate unavailability of any single source
-- Each domain module deploys as an independent container for fault isolation
+- Each namespace module deploys as an independent container for fault isolation
 
 ---
 
@@ -51,13 +51,13 @@ The foundation is solid; the capability set is deliberately focused and expands 
 │ API Gateway (Kong / NGINX / Cloudflare)                         │
 │  • TLS termination                                              │
 │  • Rate limiting per key                                        │
-│  • Route: /mcp/gse → GSE server, /mcp/{domain} → etc.          │
+│  • Route: /mcp/gse → GSE server, /mcp/{namespace} → etc.          │
 └──────────────┬──────────────────────────────────────────────────┘
                │
                ▼
 ┌──────────────────┐ ┌──────────────────────────────────────────┐
-│ GSE MCP Server   │ │ Future domain servers                    │
-│ (domain module)  │ │ (same pattern, added as needed)          │
+│ GSE MCP Server   │ │ Future namespace servers                    │
+│ (namespace module)  │ │ (same pattern, added as needed)          │
 │                  │ │                                          │
 │ Uses: pontifex_mcp   │ │ Uses: pontifex_mcp                           │
 └────────┬─────────┘ └────────┬─────────────────────────────────┘
@@ -90,9 +90,9 @@ pontifex/
 ├── SOLUTION_DESIGN.md
 ├── docker-compose.yml                      # Dev: all services + Redis + Postgres
 │
-├── alembic/                                # Monorepo migration config (demo domain branch)
+├── alembic/                                # Monorepo migration config (demo namespace branch)
 │   ├── alembic.ini                         # Points at the in-package core branch + gse
-│   └── domains/                            # Per-domain schema migrations
+│   └── examples/                            # Per-namespace schema migrations
 │       └── gse/
 │           └── versions/
 │               ├── 001_create_symbols.py
@@ -107,7 +107,7 @@ pontifex/
 │       ├── __init__.py
 │       ├── py.typed                        # Type checker marker
 │       ├── server_factory.py               # Creates configured MCP server from parts
-│       ├── config.py                       # Base settings all domains inherit
+│       ├── config.py                       # Base settings all namespaces inherit
 │       ├── storage.py                      # DB engine + dialect detection (SQLite floor ↔ Postgres)
 │       │
 │       ├── cli/                            # `pontifex-mcp` CLI (Typer entry point)
@@ -124,7 +124,7 @@ pontifex/
 │       │   ├── __init__.py
 │       │   ├── api_keys.py                 # API key validation + caching
 │       │   ├── identity.py                 # CallerIdentity + resolution from key
-│       │   └── scopes.py                   # Scope matching logic (domain:resource:action)
+│       │   └── scopes.py                   # Scope matching logic (namespace:resource:action)
 │       │
 │       ├── adapters/
 │       │   ├── __init__.py
@@ -143,7 +143,7 @@ pontifex/
 │       ├── models/
 │       │   ├── __init__.py
 │       │   ├── base.py                     # ToolResponse, AuditRecord, ToolError (Pydantic)
-│       │   └── db.py                       # SQLAlchemy: api_keys, audit_log, domain_registry
+│       │   └── db.py                       # SQLAlchemy: api_keys, audit_log, namespace_registry
 │       │
 │       ├── observability/
 │       │   ├── __init__.py
@@ -154,7 +154,7 @@ pontifex/
 │           ├── circuit_breaker.py          # Generic circuit breaker
 │           └── retry.py                    # Exponential backoff with jitter
 │
-├── domains/                                # ── Domain modules ──
+├── examples/                                # ── Namespace modules ──
 │   │
 │   ├── gse/                                # Ghana Stock Exchange
 │   │   ├── pyproject.toml                  # Depends on pontifex-mcp via workspace source
@@ -180,7 +180,7 @@ pontifex/
 │   │       ├── models.py                   # Stock, HistoryEntry, MarketSummary, Equity
 │   │       └── symbol_registry.py          # Dynamic symbol lookup via /equities + cache
 │   │
-│   └── # Future domains: domains/{name}/pyproject.toml + {name}_mcp/
+│   └── # Future namespaces: examples/{name}/pyproject.toml + {name}_mcp/
 │
 ├── tests/
 │   ├── conftest.py                         # Shared fixtures: Redis, Postgres, mock clock
@@ -192,7 +192,7 @@ pontifex/
 │   │   ├── test_scope_matching.py
 │   │   ├── test_data_source_manager.py
 │   │   └── test_server_factory.py
-│   └── domains/
+│   └── examples/
 │       └── gse/
 │           ├── conftest.py                 # GSE-specific fixtures, kwayisi mocks
 │           ├── test_tools.py
@@ -210,7 +210,7 @@ pontifex/
 │
 └── deploy/
     ├── Dockerfile.gse
-    └── docker-compose.prod.yml             # Add more Dockerfiles per domain as needed
+    └── docker-compose.prod.yml             # Add more Dockerfiles per namespace as needed
 ```
 
 ---
@@ -220,7 +220,7 @@ pontifex/
 
 ### 4.1 Base Configuration
 
-Every domain inherits from this. Domain-specific settings extend it with their own fields and env prefix.
+Every namespace inherits from this. Namespace-specific settings extend it with their own fields and env prefix.
 
 ```python
 # core/pontifex_mcp/config.py
@@ -229,7 +229,7 @@ from pydantic_settings import BaseSettings
 
 
 class CoreSettings(BaseSettings):
-    """Settings shared by all domain modules."""
+    """Settings shared by all namespace modules."""
 
     # Server
     host: str = "0.0.0.0"
@@ -240,7 +240,7 @@ class CoreSettings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # PostgreSQL (audit log + domain data)
+    # PostgreSQL (audit log + namespace data)
     database_url: str = "postgresql+asyncpg://mcp:mcp@localhost:5432/mcp_platform"
 
     # Circuit breaker defaults
@@ -257,7 +257,7 @@ class CoreSettings(BaseSettings):
 
 ### 4.2 Generic Data Adapter Protocol
 
-The adapter interface is deliberately minimal. Domains define their own method signatures by extending this protocol. The core only cares about `name`, `priority`, and `health_check` for orchestration.
+The adapter interface is deliberately minimal. Namespaces define their own method signatures by extending this protocol. The core only cares about `name`, `priority`, and `health_check` for orchestration.
 
 ```python
 # core/pontifex_mcp/adapters/base.py
@@ -284,10 +284,10 @@ class DataAdapter(Protocol):
         ...
 ```
 
-Domains extend this with their own methods:
+Namespaces extend this with their own methods:
 
 ```python
-# domains/gse/gse_mcp/adapters/protocol.py
+# examples/gse/gse_mcp/adapters/protocol.py
 
 from pontifex_mcp.adapters.base import DataAdapter
 from gse_mcp.models import Stock, HistoryEntry, MarketSummary
@@ -300,10 +300,10 @@ class GSEDataAdapter(DataAdapter):
     async def get_market_summary(self) -> MarketSummary | None: ...
 ```
 
-A logistics domain would look completely different:
+A logistics namespace would look completely different:
 
 ```python
-# Example: domains/logistics/adapters/protocol.py
+# Example: examples/logistics/adapters/protocol.py
 
 class LogisticsDataAdapter(DataAdapter):
     async def get_shipment_status(self, tracking_id: str) -> Shipment: ...
@@ -312,7 +312,7 @@ class LogisticsDataAdapter(DataAdapter):
 
 ### 4.3 DataSourceManager
 
-Generic adapter orchestration. The domain passes in its typed adapters; the manager handles circuit breaking and fallback ordering. Each domain wraps this with typed methods.
+Generic adapter orchestration. The namespace passes in its typed adapters; the manager handles circuit breaking and fallback ordering. Each namespace wraps this with typed methods.
 
 ```python
 # core/pontifex_mcp/adapters/manager.py
@@ -365,10 +365,10 @@ class DataSourceManager:
         return result
 ```
 
-Each domain builds a typed layer on top:
+Each namespace builds a typed layer on top:
 
 ```python
-# domains/gse/gse_mcp/data.py (domain-level manager)
+# examples/gse/gse_mcp/data.py (namespace-level manager)
 
 from pontifex_mcp.adapters.manager import DataSourceManager
 from pontifex_mcp.cache.redis_cache import Cache
@@ -407,7 +407,7 @@ class GSEDataService:
 
 ### 4.4 Cache Layer
 
-The cache is prefix-aware and TTL-agnostic — the domain tells it how long to cache each key. Core has no concept of "active hours" or "trading hours." If a domain wants different TTLs at different times, it computes the TTL before calling the cache.
+The cache is prefix-aware and TTL-agnostic — the namespace tells it how long to cache each key. Core has no concept of "active hours" or "trading hours." If a namespace wants different TTLs at different times, it computes the TTL before calling the cache.
 
 ```python
 # core/pontifex_mcp/cache/redis_cache.py
@@ -438,10 +438,10 @@ class Cache:
             await self.client.delete(*keys)
 ```
 
-The domain decides TTLs. For GSE, the data service computes TTL based on trading hours:
+The namespace decides TTLs. For GSE, the data service computes TTL based on trading hours:
 
 ```python
-# domains/gse/gse_mcp/data.py (excerpt)
+# examples/gse/gse_mcp/data.py (excerpt)
 
 from datetime import datetime, timezone
 
@@ -469,11 +469,11 @@ def _is_trading_hours() -> bool:
 await cache.set("live:all", data, ttl_seconds=get_ttl("live"))
 ```
 
-A non-market domain would just pass a flat TTL — no hours logic needed. The core cache doesn't care.
+A non-market namespace would just pass a flat TTL — no hours logic needed. The core cache doesn't care.
 
 ### 4.5 Server Factory
 
-The factory wires all the core pieces together so each domain's `main.py` stays small.
+The factory wires all the core pieces together so each namespace's `main.py` stays small.
 
 ```python
 # core/pontifex_mcp/server_factory.py
@@ -486,7 +486,7 @@ from pontifex_mcp.observability.logfire_setup import setup_logfire
 
 
 def create_mcp_app(
-    domain_name: str,
+    namespace_name: str,
     settings: CoreSettings,
     register_tools: callable,       # Function that registers MCP tools on the server
     health_check: callable,         # Async function returning readiness status
@@ -494,9 +494,9 @@ def create_mcp_app(
     """
     Build a fully configured FastAPI + MCP server.
 
-    The domain module provides:
-      - domain_name: identifier for metrics, cache prefix, audit logs
-      - settings: domain config (extends CoreSettings)
+    The namespace module provides:
+      - namespace_name: identifier for metrics, cache prefix, audit logs
+      - settings: namespace config (extends CoreSettings)
       - register_tools: function that registers MCP tools
       - health_check: async function for readiness probe
 
@@ -507,14 +507,14 @@ def create_mcp_app(
       - Health endpoints (/health/live, /health/ready)
       - Logfire (OTEL-based tracing, metrics, dashboards)
     """
-    app = FastAPI(title=f"{domain_name}-mcp")
+    app = FastAPI(title=f"{namespace_name}-mcp")
 
     # Observability
     if settings.logfire_token:
-        setup_logfire(app, domain_name, settings.logfire_token)
+        setup_logfire(app, namespace_name, settings.logfire_token)
 
     # Middleware (applied in reverse order; audit runs last = logs everything)
-    app.add_middleware(AuditMiddleware, domain=domain_name, db_url=settings.database_url)
+    app.add_middleware(AuditMiddleware, namespace=namespace_name, db_url=settings.database_url)
     app.add_middleware(AuthMiddleware,
                        redis_url=settings.redis_url,
                        database_url=settings.database_url,
@@ -535,10 +535,10 @@ def create_mcp_app(
     return app
 ```
 
-Each domain's `config.py` extends `CoreSettings` with domain-specific fields:
+Each namespace's `config.py` extends `CoreSettings` with namespace-specific fields:
 
 ```python
-# domains/gse/gse_mcp/config.py
+# examples/gse/gse_mcp/config.py
 
 from pontifex_mcp.config import CoreSettings
 
@@ -554,10 +554,10 @@ class GSESettings(CoreSettings):
     model_config = {"env_prefix": "GSE_MCP_"}
 ```
 
-Each domain's `main.py` becomes ~30 lines:
+Each namespace's `main.py` becomes ~30 lines:
 
 ```python
-# domains/gse/gse_mcp/main.py
+# examples/gse/gse_mcp/main.py
 
 from pontifex_mcp.server_factory import create_mcp_app
 from pontifex_mcp.cache.redis_cache import Cache
@@ -581,12 +581,12 @@ manager = DataSourceManager(adapters, settings.cb_failure_threshold,
 # Cache with GSE trading hours
 cache = Cache(settings.redis_url, prefix="gse")
 
-# Domain data service
+# Namespace data service
 data_service = GSEDataService(manager, cache)
 
 # Wire it up
 app = create_mcp_app(
-    domain_name="gse",
+    namespace_name="gse",
     settings=settings,
     register_tools=lambda app: register_gse_tools(app, data_service),
     health_check=manager.health_summary,
@@ -595,9 +595,9 @@ app = create_mcp_app(
 
 ---
 
-## 5. GSE Domain Module — Tool Specifications
+## 5. GSE Namespace Module — Tool Specifications
 
-All tool names are prefixed with the domain (`gse_`) so they don't collide when a client connects to multiple domain servers.
+All tool names are prefixed with the namespace (`gse_`) so they don't collide when a client connects to multiple namespace servers.
 
 ### 5.1 gse_get_live_prices
 
@@ -826,17 +826,17 @@ Primary adapter. Free, no authentication required.
 | No SLA, no uptime guarantee | Circuit breaker (3 failures → open 30s) + fallback to internal DB |
 | No rate limit docs | Self-impose 1 req/s; cache absorbs most traffic |
 | Connection timeouts from some hosts | httpx timeout set to 8s; retry 3x with backoff |
-| Some `/equities` fields (dps, eps) are null | Tolerate nulls in domain models; don't fail on missing data |
+| Some `/equities` fields (dps, eps) are null | Tolerate nulls in data models; don't fail on missing data |
 | No market summary endpoint | Derive from `/live` response (aggregate volume, count gainers/losers) |
 | No CORS headers | Server-side calls only; not a concern for MCP |
 | Unclear redistribution terms | Low risk for internal/developer use; use GSE official feed for commercial redistribution |
 
 ---
 
-## 7. GSE Domain Models
+## 7. GSE Data Models
 
 ```python
-# domains/gse/gse_mcp/models.py
+# examples/gse/gse_mcp/models.py
 
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -912,7 +912,7 @@ class Equity(BaseModel):
 The symbol registry is built dynamically from the kwayisi `/equities` endpoint — not maintained as a static file. On startup, the adapter fetches the full equities list and caches it. New listings and delistings are reflected automatically.
 
 ```python
-# domains/gse/gse_mcp/symbol_registry.py
+# examples/gse/gse_mcp/symbol_registry.py
 
 from gse_mcp.models import Equity
 
@@ -962,14 +962,14 @@ class ToolResponse(BaseModel):
     """Wrapper metadata returned with every tool call."""
     timestamp: datetime
     source: str             # Which adapter served the data
-    is_live: bool           # True if the domain's active hours apply
+    is_live: bool           # True if the namespace's active hours apply
     cache_hit: bool = False
 
 
 class AuditRecord(BaseModel):
     """In-memory representation before writing to Postgres."""
     timestamp: datetime
-    domain: str             # e.g. "gse", "logistics"
+    namespace: str             # e.g. "gse", "logistics"
     key_id: str             # API key used (not the secret)
     owner_id: str           # Opaque upstream ID
     owner_label: str        # Human-readable label
@@ -989,7 +989,7 @@ class AuditRecord(BaseModel):
 
 ### 10.1 Principle
 
-The core cache layer is a dumb key-value store with TTLs. It does not know about trading hours, market schedules, or domain-specific freshness rules. The domain decides the TTL for each cache write — see Section 4.4 for the GSE TTL logic.
+The core cache layer is a dumb key-value store with TTLs. It does not know about trading hours, market schedules, or namespace-specific freshness rules. The namespace decides the TTL for each cache write — see Section 4.4 for the GSE TTL logic.
 
 ### 10.2 GSE TTL Configuration
 
@@ -1004,16 +1004,16 @@ The core cache layer is a dumb key-value store with TTLs. It does not know about
 
 These TTLs are computed by the GSE data service (not the cache layer) and passed as `ttl_seconds` to `cache.set()`.
 
-### 10.3 Multi-domain Key Namespacing
+### 10.3 Multi-namespace Key Namespacing
 
-Each domain uses its own prefix. All keys follow the pattern `{domain}:{resource}:{identifier}`.
+Each namespace uses its own prefix. All keys follow the pattern `{namespace}:{resource}:{identifier}`.
 
-| Domain | Example Keys |
+| Namespace | Example Keys |
 |--------|-------------|
 | GSE | `gse:live:all`, `gse:live:MTN`, `gse:history:GCB:30`, `gse:equities` |
-| (future) | `{domain}:{resource}:{identifier}` |
+| (future) | `{namespace}:{resource}:{identifier}` |
 
-All domains share a single Redis instance. Key collision is impossible because of the prefix.
+All namespaces share a single Redis instance. Key collision is impossible because of the prefix.
 
 ---
 
@@ -1032,7 +1032,7 @@ This keeps the library reusable: embed it in a SaaS product, deploy it inside a 
 
 ### 11.2 Permission Scopes
 
-Each resolved identity carries a list of permission scopes that define exactly which tools it can call. Scopes use the colon-separated `domain:resource:action` pattern from the MCP ecosystem.
+Each resolved identity carries a list of permission scopes that define exactly which tools it can call. Scopes use the colon-separated `namespace:resource:action` pattern from the MCP ecosystem.
 
 **Mapping tools to scopes:** Strip the verb prefix from the tool name — that gives you the resource. The verb tells you the action. `get_live_prices` → resource `live_prices`, action `read`. Future tools that write or mutate data would use `write` or `execute`.
 
@@ -1040,7 +1040,7 @@ Each resolved identity carries a list of permission scopes that define exactly w
 
 | Scope | Grants access to |
 |-------|-----------------|
-| `gse:*:*` | All resources, all actions in the GSE domain |
+| `gse:*:*` | All resources, all actions in the GSE namespace |
 | `gse:*:read` | All resources in GSE, read-only |
 | `gse:live_prices:read` | Only the live prices tool in GSE |
 | `gse:stock_price:read` | Only the single stock price tool in GSE |
@@ -1048,14 +1048,14 @@ Each resolved identity carries a list of permission scopes that define exactly w
 | `gse:market_summary:read` | Only the market summary tool in GSE |
 | `gse:company_info:read` | Only the company info tool in GSE |
 
-A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data but only bond yields from a hypothetical GFI domain.
+A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data but only bond yields from a hypothetical GFI namespace.
 
 **Scope resolution rules:**
 
-1. `{domain}:*:*` grants access to all current and future resources and actions in that domain
-2. `{domain}:*:{action}` grants access to all resources for a specific action (e.g. read-only across a domain)
-3. `{domain}:{resource}:*` grants all actions on a specific resource
-4. `{domain}:{resource}:{action}` grants exactly one action on one resource
+1. `{namespace}:*:*` grants access to all current and future resources and actions in that namespace
+2. `{namespace}:*:{action}` grants access to all resources for a specific action (e.g. read-only across a namespace)
+3. `{namespace}:{resource}:*` grants all actions on a specific resource
+4. `{namespace}:{resource}:{action}` grants exactly one action on one resource
 5. If no scope matches the requested tool, the call is rejected with `403 Forbidden`
 6. Scopes are case-insensitive and stored lowercase
 7. More specific scopes don't override broader ones — any matching scope is sufficient
@@ -1101,13 +1101,13 @@ class CallerIdentity:
     rate_limit_rpm: int         # Requests per minute
     transport: str              # "stdio" | "http"
 
-    def can_use_tool(self, domain: str, resource: str, action: str) -> bool:
-        """Check if this key's scopes permit domain:resource:action."""
+    def can_use_tool(self, namespace: str, resource: str, action: str) -> bool:
+        """Check if this key's scopes permit namespace:resource:action."""
         patterns = [
-            f"{domain}:*:*",               # full domain access
-            f"{domain}:*:{action}",         # all resources, specific action
-            f"{domain}:{resource}:*",       # specific resource, all actions
-            f"{domain}:{resource}:{action}",# exact match
+            f"{namespace}:*:*",               # full namespace access
+            f"{namespace}:*:{action}",         # all resources, specific action
+            f"{namespace}:{resource}:*",       # specific resource, all actions
+            f"{namespace}:{resource}:{action}",# exact match
         ]
         return any(p in self.scopes for p in patterns)
 ```
@@ -1173,12 +1173,12 @@ class APIKeyResolver:
             return identity
 ```
 
-### 11.6 Scope Enforcement in Domain Servers
+### 11.6 Scope Enforcement in Namespace Servers
 
-Each domain server checks scopes before executing a tool. The check is one line — no policy objects, no tier maps.
+Each namespace server checks scopes before executing a tool. The check is one line — no policy objects, no tier maps.
 
 ```python
-# domains/gse/gse_mcp/tools/live_prices.py (excerpt)
+# examples/gse/gse_mcp/tools/live_prices.py (excerpt)
 
 async def handle_get_live_prices(caller: CallerIdentity, params: dict):
     if not caller.can_use_tool("gse", "live_prices", "read"):
@@ -1304,7 +1304,7 @@ These endpoints are only meaningful when JWT auth is configured; an API-key-only
 
 `pontifex-mcp` is not tied to any one IdP. A handful of settings point it at any OIDC-compliant provider; switching providers is a config change, not a code change.
 
-Domain-specific settings carry the domain's `env_prefix` — `GSESettings` sets `env_prefix="GSE_MCP_"`, so e.g. the upstream data-source URL is read from `GSE_MCP_KWAYISI_BASE_URL`. But **infrastructure-level** settings — the auth/IdP config, the canonical URL, and the shared DB/Redis connections (which provider backs the deployment, where it's hosted, what it connects to) — are not domain concerns, so they read from **bare, unprefixed** env vars via `validation_alias` (`DATABASE_URL`, `REDIS_URL`, `AUTH_*`, `PUBLIC_BASE_URL`). The var names are therefore the same for any MCP app, regardless of its domain prefix:
+Namespace-specific settings carry the namespace's `env_prefix` — `GSESettings` sets `env_prefix="GSE_MCP_"`, so e.g. the upstream data-source URL is read from `GSE_MCP_KWAYISI_BASE_URL`. But **infrastructure-level** settings — the auth/IdP config, the canonical URL, and the shared DB/Redis connections (which provider backs the deployment, where it's hosted, what it connects to) — are not namespace concerns, so they read from **bare, unprefixed** env vars via `validation_alias` (`DATABASE_URL`, `REDIS_URL`, `AUTH_*`, `PUBLIC_BASE_URL`). The var names are therefore the same for any MCP app, regardless of its namespace prefix:
 
 ```
 AUTH_JWKS_URL=https://your-provider.example/.well-known/jwks.json
@@ -1333,13 +1333,13 @@ Because the resource server only ever validates the resulting JWT, `pontifex-mcp
 
 ### 12.1 Schema
 
-Shared across all domains. The `key_id` and `domain` columns scope records.
+Shared across all namespaces. The `key_id` and `namespace` columns scope records.
 
 ```sql
 CREATE TABLE pontifex_mcp_core.audit_log (
     id              BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    domain          TEXT NOT NULL,              -- 'gse', 'gfi', 'ngx', etc.
+    namespace          TEXT NOT NULL,              -- 'gse', 'gfi', 'ngx', etc.
     key_id          TEXT NOT NULL,              -- API key identifier (not secret)
     owner_id        TEXT NOT NULL,              -- Opaque upstream ID
     owner_label     TEXT NOT NULL,
@@ -1354,7 +1354,7 @@ CREATE TABLE pontifex_mcp_core.audit_log (
 );
 
 CREATE INDEX idx_audit_timestamp ON pontifex_mcp_core.audit_log (timestamp DESC);
-CREATE INDEX idx_audit_domain    ON pontifex_mcp_core.audit_log (domain, timestamp DESC);
+CREATE INDEX idx_audit_namespace    ON pontifex_mcp_core.audit_log (namespace, timestamp DESC);
 CREATE INDEX idx_audit_key       ON pontifex_mcp_core.audit_log (key_id, timestamp DESC);
 CREATE INDEX idx_audit_owner     ON pontifex_mcp_core.audit_log (owner_id, timestamp DESC);
 CREATE INDEX idx_audit_tool      ON pontifex_mcp_core.audit_log (tool_name, timestamp DESC);
@@ -1459,7 +1459,7 @@ When the gateway rejects a request (429), the MCP server never sees it — the g
 
 ### 14.1 Principle
 
-Same isolation model as the codebase: one shared `pontifex_mcp_core` schema for cross-cutting infrastructure tables, one schema per domain for domain-specific data. A bad migration in GFI cannot touch GSE's tables. All schemas live in a single PostgreSQL instance so cross-schema queries (e.g. "all audit records across all domains") remain simple joins.
+Same isolation model as the codebase: one shared `pontifex_mcp_core` schema for cross-cutting infrastructure tables, one schema per namespace for namespace-specific data. A bad migration in GFI cannot touch GSE's tables. All schemas live in a single PostgreSQL instance so cross-schema queries (e.g. "all audit records across all namespaces") remain simple joins.
 
 **Local floor.** Postgres is the production target, but the same SQLAlchemy models run on SQLite for the quickstart and local development. `pontifex-mcp db upgrade` detects the dialect: it applies the packaged Alembic migrations against Postgres, or builds the schema with `create_all` on SQLite (which has no named schemas, so `pontifex_mcp_core` collapses to the default namespace). Redis is optional in both modes — without it, the key-lookup cache and per-caller rate limiting are simply disabled and logged. A schema-parity test (`tests/core/test_schema_parity.py`) guards the two build paths against drift, so a key minted on the SQLite floor behaves the same once the deployment moves to Postgres.
 
@@ -1470,8 +1470,8 @@ mcp_platform (database)
 │
 ├── pontifex_mcp_core (schema)
 │   ├── api_keys                     ← Hashed keys → owner + scopes + rate limit
-│   ├── audit_log                    ← All tool invocations, all domains
-│   ├── domain_registry              ← Which domains are active + metadata
+│   ├── audit_log                    ← All tool invocations, all namespaces
+│   ├── namespace_registry              ← Which namespaces are active + metadata
 │   └── circuit_breaker_state        ← Optional: persisted breaker state
 │
 ├── gse (schema)                     ← Ghana Stock Exchange (implemented)
@@ -1480,7 +1480,7 @@ mcp_platform (database)
 │   ├── cached_eod_prices            ← End-of-day snapshots (backup to Redis)
 │   └── data_quality_log             ← Cross-source discrepancy records
 │
-└── {domain} (schema)                ← Each future domain gets its own schema
+└── {namespace} (schema)                ← Each future namespace gets its own schema
     └── ...                              following the same pattern
 ```
 
@@ -1509,11 +1509,11 @@ CREATE TABLE pontifex_mcp_core.api_keys (
 CREATE INDEX idx_api_keys_hash ON pontifex_mcp_core.api_keys (key_hash);
 CREATE INDEX idx_api_keys_owner ON pontifex_mcp_core.api_keys (owner_id);
 
--- audit_log: every tool invocation across all domains
+-- audit_log: every tool invocation across all namespaces
 CREATE TABLE pontifex_mcp_core.audit_log (
     id              BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    domain          TEXT NOT NULL,
+    namespace          TEXT NOT NULL,
     key_id          TEXT NOT NULL,
     owner_id        TEXT NOT NULL,
     owner_label     TEXT NOT NULL,
@@ -1528,14 +1528,14 @@ CREATE TABLE pontifex_mcp_core.audit_log (
 );
 
 CREATE INDEX idx_audit_timestamp ON pontifex_mcp_core.audit_log (timestamp DESC);
-CREATE INDEX idx_audit_domain    ON pontifex_mcp_core.audit_log (domain, timestamp DESC);
+CREATE INDEX idx_audit_namespace    ON pontifex_mcp_core.audit_log (namespace, timestamp DESC);
 CREATE INDEX idx_audit_key       ON pontifex_mcp_core.audit_log (key_id, timestamp DESC);
 CREATE INDEX idx_audit_owner     ON pontifex_mcp_core.audit_log (owner_id, timestamp DESC);
 CREATE INDEX idx_audit_tool      ON pontifex_mcp_core.audit_log (tool_name, timestamp DESC);
 
--- domain_registry: tracks active domains and their config metadata
-CREATE TABLE pontifex_mcp_core.domain_registry (
-    domain          TEXT PRIMARY KEY,
+-- namespace_registry: tracks active namespaces and their config metadata
+CREATE TABLE pontifex_mcp_core.namespace_registry (
+    namespace          TEXT PRIMARY KEY,
     display_name    TEXT NOT NULL,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     config_json     JSONB,                          -- e.g. trading hours, cache TTLs
@@ -1545,13 +1545,13 @@ CREATE TABLE pontifex_mcp_core.domain_registry (
 
 -- Optional: persisted circuit breaker state (skip initially)
 CREATE TABLE pontifex_mcp_core.circuit_breaker_state (
-    domain          TEXT NOT NULL,
+    namespace          TEXT NOT NULL,
     adapter_name    TEXT NOT NULL,
     state           TEXT NOT NULL DEFAULT 'closed',
     failure_count   INTEGER NOT NULL DEFAULT 0,
     last_failure_at TIMESTAMPTZ,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (domain, adapter_name)
+    PRIMARY KEY (namespace, adapter_name)
 );
 ```
 
@@ -1617,34 +1617,34 @@ CREATE TABLE gse.data_quality_log (
 
 ### 14.5 Schema Permissions
 
-Two classes of runtime role for `pontifex-mcp` itself, plus a separate provisioning credential. Key provisioning — whether the `pontifex-mcp keys` CLI or an upstream platform — runs with a credential that holds `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. The domain service role holds no such grant beyond touching `last_used_at`: a running domain server reads keys to authenticate callers but cannot mint them or change their scopes, hashes, or activation, so a compromised server can't forge or escalate credentials.
+Two classes of runtime role for `pontifex-mcp` itself, plus a separate provisioning credential. Key provisioning — whether the `pontifex-mcp keys` CLI or an upstream platform — runs with a credential that holds `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. The namespace service role holds no such grant beyond touching `last_used_at`: a running namespace server reads keys to authenticate callers but cannot mint them or change their scopes, hashes, or activation, so a compromised server can't forge or escalate credentials.
 
-- **Domain services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys (with a column-scoped `UPDATE` on `last_used_at` only), write `pontifex_mcp_core.audit_log`, full access to their own domain schema. No other write access to `api_keys`.
+- **Namespace services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys (with a column-scoped `UPDATE` on `last_used_at` only), write `pontifex_mcp_core.audit_log`, full access to their own namespace schema. No other write access to `api_keys`.
 - **Provisioning** (the `keys` CLI, or an upstream platform using its own credentials): `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. Run from an operator context, not the serving path.
 - **Analytics** (`mcp_analytics`): Read-only on everything for dashboards and reporting.
 
 ```sql
--- Domain service role (one per domain)
+-- Namespace service role (one per namespace)
 CREATE ROLE mcp_gse_service LOGIN PASSWORD '...';
--- Future: CREATE ROLE mcp_{domain}_service LOGIN PASSWORD '...';
+-- Future: CREATE ROLE mcp_{namespace}_service LOGIN PASSWORD '...';
 
 -- Analytics role (read-only across everything)
 CREATE ROLE mcp_analytics LOGIN PASSWORD '...';
 
--- Core schema: domain services can read api_keys, write audit
+-- Core schema: namespace services can read api_keys, write audit
 GRANT USAGE ON SCHEMA pontifex_mcp_core TO mcp_gse_service;
 GRANT SELECT ON pontifex_mcp_core.api_keys TO mcp_gse_service;
 GRANT UPDATE (last_used_at) ON pontifex_mcp_core.api_keys TO mcp_gse_service;
 GRANT SELECT, INSERT ON pontifex_mcp_core.audit_log TO mcp_gse_service;
 GRANT USAGE ON SEQUENCE pontifex_mcp_core.audit_log_id_seq TO mcp_gse_service;
-GRANT SELECT ON pontifex_mcp_core.domain_registry TO mcp_gse_service;
+GRANT SELECT ON pontifex_mcp_core.namespace_registry TO mcp_gse_service;
 
--- Domain isolation: each service owns only its schema
+-- Namespace isolation: each service owns only its schema
 GRANT ALL ON SCHEMA gse TO mcp_gse_service;
 GRANT ALL ON ALL TABLES IN SCHEMA gse TO mcp_gse_service;
 ALTER DEFAULT PRIVILEGES IN SCHEMA gse GRANT ALL ON TABLES TO mcp_gse_service;
 
--- Repeat the above pattern for each new domain
+-- Repeat the above pattern for each new namespace
 
 -- Analytics: read-only everywhere
 GRANT USAGE ON SCHEMA pontifex_mcp_core, gse TO mcp_analytics;
@@ -1654,12 +1654,12 @@ GRANT SELECT ON ALL TABLES IN SCHEMA pontifex_mcp_core, gse TO mcp_analytics;
 ### 14.6 Alembic Migration Strategy
 
 Migrations split into two independent branches: `core` (the library's
-`pontifex_mcp_core` schema) and one per domain. `alembic upgrade heads` advances
+`pontifex_mcp_core` schema) and one per namespace. `alembic upgrade heads` advances
 every branch.
 
 The `core` branch + `env.py` ship **inside the `pontifex-mcp` wheel**, so a
 `pip install` user runs `pontifex-mcp db upgrade` to create or update the schema
-(no source checkout). Domain branches stay in the monorepo as demos.
+(no source checkout). Namespace branches stay in the monorepo as demos.
 
 ```
 core/pontifex_mcp/migrations/        # shipped in the wheel
@@ -1668,28 +1668,28 @@ core/pontifex_mcp/migrations/        # shipped in the wheel
 └── versions/
     ├── 001_create_api_keys.py
     ├── 002_create_audit_log.py
-    ├── 003_create_domain_registry.py
+    ├── 003_create_namespace_registry.py
     └── 004_add_audit_delegated_audience.py
 
-alembic/                             # monorepo: adds the demo domain branch
+alembic/                             # monorepo: adds the demo namespace branch
 ├── alembic.ini                      # points at the in-package core branch + gse
-└── domains/
+└── examples/
     └── gse/
         └── versions/
             ├── 001_create_symbols.py
             ├── 002_create_historical_prices.py
             └── 003_create_cached_eod_prices.py
-    # Future demo domains get their own folder here
+    # Future demo namespaces get their own folder here
 ```
 
 Two ways to run them: `pontifex-mcp db upgrade` (core only, from the installed
-wheel) and `alembic -c alembic/alembic.ini upgrade heads` (core + domains, from
+wheel) and `alembic -c alembic/alembic.ini upgrade heads` (core + namespaces, from
 a source checkout — what the GSE deploy and CI use).
 
 Each migration explicitly targets its schema using the `schema=` parameter in `op.create_table()`:
 
 ```python
-# alembic/domains/gse/versions/001_create_symbols.py
+# alembic/examples/gse/versions/001_create_symbols.py
 
 from alembic import op
 import sqlalchemy as sa
@@ -1714,11 +1714,11 @@ def downgrade():
     op.drop_table("symbols", schema="gse")
 ```
 
-Core migrations run with a shared migration role that has `CREATE SCHEMA` privileges. Domain migrations run with the domain's service role (which already has `ALL ON SCHEMA {domain}`).
+Core migrations run with a shared migration role that has `CREATE SCHEMA` privileges. Namespace migrations run with the namespace's service role (which already has `ALL ON SCHEMA {namespace}`).
 
 ### 14.7 Connection Pooling
 
-Each domain server maintains its own SQLAlchemy async engine with a connection pool. Recommended pool settings to start:
+Each namespace server maintains its own SQLAlchemy async engine with a connection pool. Recommended pool settings to start:
 
 | Setting | Value | Rationale |
 |---------|-------|-----------|
@@ -1741,9 +1741,9 @@ engine = create_async_engine(
 
 ### 14.8 The circuit_breaker_state Table
 
-**Skip it initially.** The circuit breaker runs in-memory. When a container restarts, the breaker resets to `CLOSED` and rediscovers adapter availability by trying and failing (or succeeding). For a single container per domain, this is fine.
+**Skip it initially.** The circuit breaker runs in-memory. When a container restarts, the breaker resets to `CLOSED` and rediscovers adapter availability by trying and failing (or succeeding). For a single container per namespace, this is fine.
 
-**When to add it:** If you scale to multiple container replicas per domain, in-memory breakers diverge — replica A might have kwayisi marked `OPEN` while replica B still thinks it's `CLOSED` and keeps hammering a dead upstream. Persisting state to `pontifex_mcp_core.circuit_breaker_state` (or Redis, which is faster for this) lets all replicas share a single view. Add this when you move to horizontal scaling.
+**When to add it:** If you scale to multiple container replicas per namespace, in-memory breakers diverge — replica A might have kwayisi marked `OPEN` while replica B still thinks it's `CLOSED` and keeps hammering a dead upstream. Persisting state to `pontifex_mcp_core.circuit_breaker_state` (or Redis, which is faster for this) lets all replicas share a single view. Add this when you move to horizontal scaling.
 
 ---
 
@@ -1814,7 +1814,7 @@ Every tool call creates an OTEL span with these attributes:
 
 | Attribute | Example |
 |-----------|---------|
-| `mcp.domain` | `gse` |
+| `mcp.namespace` | `gse` |
 | `mcp.tool.name` | `gse_get_live_prices` |
 | `mcp.caller.key_id` | `key_abc123` |
 | `mcp.caller.owner_id` | `usr_kwame` |
@@ -1822,11 +1822,11 @@ Every tool call creates an OTEL span with these attributes:
 | `cache.hit` | `true` |
 | `response.item_count` | `37` |
 
-Logfire auto-instruments FastAPI (request/response tracing), httpx (outbound adapter calls), and Redis (cache operations). Domain-specific spans are added in tool handlers for business-level visibility.
+Logfire auto-instruments FastAPI (request/response tracing), httpx (outbound adapter calls), and Redis (cache operations). Namespace-specific spans are added in tool handlers for business-level visibility.
 
 ### 16.3 Health Endpoints
 
-Each domain server exposes:
+Each namespace server exposes:
 
 - `GET /health/live` — 200 if the process is running
 - `GET /health/ready` — 200 if Redis is reachable and at least one adapter passes `health_check()`
@@ -1837,7 +1837,7 @@ Each domain server exposes:
 
 ### 17.1 Dockerfiles
 
-Each domain gets its own Dockerfile. They all follow the same pattern:
+Each namespace gets its own Dockerfile. They all follow the same pattern:
 
 ```dockerfile
 # deploy/Dockerfile.gse
@@ -1854,8 +1854,8 @@ COPY pyproject.toml uv.lock ./
 # Copy core library
 COPY core/ core/
 
-# Copy domain module
-COPY domains/gse/ domains/gse/
+# Copy namespace module
+COPY examples/gse/ examples/gse/
 
 # Install dependencies
 RUN uv sync --package gse-mcp --frozen --no-dev
@@ -1884,7 +1884,7 @@ services:
       GSE_MCP_LOG_LEVEL: DEBUG
     depends_on: [redis, postgres]
 
-  # Add more domain services here as needed, following the same pattern
+  # Add more namespace services here as needed, following the same pattern
 
   redis:
     image: redis:7-alpine
@@ -1905,12 +1905,12 @@ volumes:
 
 ### 17.3 Production: Fly.io
 
-Each domain server deploys as a separate Fly app. Redis and Postgres are Fly-managed services shared across apps.
+Each namespace server deploys as a separate Fly app. Redis and Postgres are Fly-managed services shared across apps.
 
-**Fly app per domain:**
+**Fly app per namespace:**
 
 ```toml
-# fly.toml (GSE domain)
+# fly.toml (GSE namespace)
 
 app = "mcp-gse"
 primary_region = "lhr"  # London — closest Fly region to West Africa
@@ -1939,7 +1939,7 @@ primary_region = "lhr"  # London — closest Fly region to West Africa
 **Managed services:**
 
 ```bash
-# Create Postgres (shared across all domain apps)
+# Create Postgres (shared across all namespace apps)
 fly postgres create --name pontifex-mcp-db --region lhr
 
 # Attach to the GSE app
@@ -1959,7 +1959,7 @@ fly secrets set DATABASE_URL="postgres://..." --app mcp-gse
 fly deploy --app mcp-gse
 ```
 
-**Adding a new domain** is: create a new `fly.toml`, attach the same Postgres and Redis, deploy. Each domain app scales independently.
+**Adding a new namespace** is: create a new `fly.toml`, attach the same Postgres and Redis, deploy. Each namespace app scales independently.
 
 **Region considerations:** Fly's closest region to Accra is `lhr` (London). If latency matters, consider `jnb` (Johannesburg) for a secondary region. Fly supports multi-region with read replicas for Postgres if needed later.
 
@@ -1983,7 +1983,7 @@ For users connecting to the GSE server via Claude Desktop:
 }
 ```
 
-To connect additional domain servers later, add each as a separate MCP server entry in the same config.
+To connect additional namespace servers later, add each as a separate MCP server entry in the same config.
 
 ---
 
@@ -1999,7 +1999,7 @@ To connect additional domain servers later, add each as a separate MCP server en
 - Audit middleware: record written with correct fields
 - Server factory: app bootstraps with health endpoints
 
-### 18.2 Domain Unit Tests (`tests/domains/gse/`)
+### 18.2 Namespace Unit Tests (`tests/examples/gse/`)
 
 - Mock kwayisi HTTP responses using `respx`
 - Test each tool handler with known inputs and expected outputs
@@ -2010,11 +2010,11 @@ To connect additional domain servers later, add each as a separate MCP server en
 
 - Spin up Redis + PostgreSQL via `testcontainers-python`
 - Full path: tool call → cache miss → adapter → cache write → response → audit log
-- Verify audit records contain correct domain, tool, caller, latency
+- Verify audit records contain correct namespace, tool, caller, latency
 
 ### 18.4 Contract Tests
 
-- Record actual kwayisi API responses as JSON fixtures (`tests/domains/gse/fixtures/`)
+- Record actual kwayisi API responses as JSON fixtures (`tests/examples/gse/fixtures/`)
 - Adapter tests run against fixtures; if kwayisi changes their response shape, tests break
 
 ### 18.5 Load Tests
@@ -2031,7 +2031,7 @@ To connect additional domain servers later, add each as a separate MCP server en
 # pyproject.toml (workspace root — virtual, no [project] table)
 
 [tool.uv.workspace]
-members = ["core", "domains/*"]
+members = ["core", "examples/*"]
 
 [tool.uv]
 dev-dependencies = [
@@ -2076,7 +2076,7 @@ module-root = ""
 ```
 
 ```toml
-# domains/gse/pyproject.toml
+# examples/gse/pyproject.toml
 
 [project]
 name = "gse-mcp"
@@ -2099,23 +2099,23 @@ module-root = ""
 
 ---
 
-## 20. Adding a New Domain Module
+## 20. Adding a New Namespace Module
 
-To add a new domain, follow these steps:
+To add a new namespace, follow these steps:
 
-1. **Create the directory:** `domains/{name}/{name}_mcp/`
+1. **Create the directory:** `examples/{name}/{name}_mcp/`
 
-2. **Create `pyproject.toml`** with `[build-system]` using `uv_build`, dependency on `pontifex-mcp` via `[tool.uv.sources]`, and `requires-python = ">=3.12"`. The workspace root auto-discovers it via the `domains/*` glob.
+2. **Create `pyproject.toml`** with `[build-system]` using `uv_build`, dependency on `pontifex-mcp` via `[tool.uv.sources]`, and `requires-python = ">=3.12"`. The workspace root auto-discovers it via the `examples/*` glob.
 
-3. **Define domain models** in `models.py`. These are the Pydantic objects your tools return.
+3. **Define data models** in `models.py`. These are the Pydantic objects your tools return.
 
-4. **Define the adapter protocol** in `adapters/protocol.py`. Extend `pontifex_mcp.adapters.base.DataAdapter` with your domain-specific methods.
+4. **Define the adapter protocol** in `adapters/protocol.py`. Extend `pontifex_mcp.adapters.base.DataAdapter` with your namespace-specific methods.
 
-5. **Implement adapters.** One per external data source. Each returns your domain models.
+5. **Implement adapters.** One per external data source. Each returns your data models.
 
-6. **Define tools** in `tools/`. One file per tool. Each tool calls the domain's data service.
+6. **Define tools** in `tools/`. One file per tool. Each tool calls the namespace's data service.
 
-7. **Map tool permissions.** For each tool, define the `domain:resource:action` scope. Strip the verb prefix from the tool name to get the resource, use the verb to determine the action. Document the mapping in the tool file:
+7. **Map tool permissions.** For each tool, define the `namespace:resource:action` scope. Strip the verb prefix from the tool name to get the resource, use the verb to determine the action. Document the mapping in the tool file:
 
     | Tool | Scope |
     |------|-------|
@@ -2123,19 +2123,19 @@ To add a new domain, follow these steps:
     | `set_price_alert` | `gse:price_alert:write` |
     | `run_backtest` | `gse:backtest:execute` |
 
-8. **Create `config.py`** extending `CoreSettings`. Add domain-specific settings (API URLs, timeouts, active hours). Set `env_prefix` to `{NAME}_MCP_`.
+8. **Create `config.py`** extending `CoreSettings`. Add namespace-specific settings (API URLs, timeouts, active hours). Set `env_prefix` to `{NAME}_MCP_`.
 
 9. **Create `main.py`** wiring adapters → DataSourceManager → Cache → DataService → server factory. This should be ~30 lines.
 
-10. **Create the database schema** in `alembic/domains/{name}/`. Each migration targets `schema="{name}"`.
+10. **Create the database schema** in `alembic/examples/{name}/`. Each migration targets `schema="{name}"`.
 
 11. **Create a database role** (`mcp_{name}_service`) with the same permission pattern as GSE.
 
-12. **Write tests** in `tests/domains/{name}/`. Record API fixtures. Mock external calls.
+12. **Write tests** in `tests/examples/{name}/`. Record API fixtures. Mock external calls.
 
 13. **Create Dockerfile** in `deploy/Dockerfile.{name}`.
 
-14. **Add to `docker-compose.yml`** with the domain's port and env vars.
+14. **Add to `docker-compose.yml`** with the namespace's port and env vars.
 
 The core library, auth, audit, caching, circuit breaker, observability, and health checks require zero changes.
 
@@ -2159,5 +2159,5 @@ Resolve before implementation:
 1. **GSE official feed** — Contact GSE data services (gse.com.gh/data-services) for pricing and endpoint details. Needed for a licensed adapter and for commercial redistribution.
 2. **Data redistribution** — kwayisi's terms are unclear on redistribution. For production use serving data externally, the GSE official feed should be the primary source.
 3. **Upstream integration pattern** — The `pontifex-mcp keys` CLI now handles operator and CI provisioning. Still open for SaaS integrators: keep writing API keys directly to Postgres, or expose a provisioning REST API? Direct DB writes are simpler; an API is more portable.
-4. **Additional domains** — Which domains are likely next after GSE? Non-market verticals (logistics, government APIs) would help validate that the core abstractions generalise beyond market data.
+4. **Additional namespaces** — Which namespaces are likely next after GSE? Non-market verticals (logistics, government APIs) would help validate that the core abstractions generalise beyond market data.
 5. **Upstream data source credentials** — Some future adapters will need to authenticate with their upstream APIs (API keys, OAuth tokens, client certificates). The adapter interface supports this today (pass credentials into the constructor), but there's no platform-level pattern yet for how those secrets are stored, rotated, or scoped. Decide when the first authenticated upstream is added: secrets manager (Vault, AWS Secrets Manager), encrypted env vars, or per-user "bring your own credentials" — each has different implications for the adapter and config layers.

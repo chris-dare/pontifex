@@ -10,7 +10,7 @@ authentication, per-caller scopes, rate limits, and a full audit trail.
 
 - **Secure by default** — OAuth 2.1 JWTs *and* `sk_…` API keys; every tool call is authenticated.
   Any OIDC provider (Auth0, Entra, Clerk, Keycloak).
-- **Least-privilege scopes** — `domain:resource:action`, checked before every call. Callers can't
+- **Least-privilege scopes** — `namespace:resource:action`, checked before every call. Callers can't
   widen their own access.
 - **Auditable** — every call recorded: who, what, when, data source, cache hit, latency.
 - **Standards-based** — RFC 9728 discovery + `WWW-Authenticate`; MCP clients bootstrap auth on their own.
@@ -87,7 +87,7 @@ AUTH_JWKS_URL, AUTH_ISSUER, AUTH_AUDIENCE, AUTH_SCOPES_CLAIM   # enable the OAut
 PUBLIC_BASE_URL                  # canonical URL advertised in OAuth discovery
 ```
 
-Domain-specific settings on your subclass read with your domain's `env_prefix`.
+Namespace-specific settings on your subclass read with your namespace's `env_prefix`.
 
 ## Connect an existing API (no hand-written tools)
 
@@ -101,7 +101,7 @@ from pontifex_mcp import register_openapi_tools, BearerFromEnv
 register_openapi_tools(
     mcp,
     spec="https://api.internal/openapi.json",   # URL, path, or dict; JSON or YAML
-    domain="orders",
+    namespace="orders",
     base_url="https://api.internal",
     audit=audit,
     auth=BearerFromEnv("ORDERS_API_TOKEN"),     # service credential to the backend
@@ -110,7 +110,7 @@ register_openapi_tools(
 ```
 
 Or onboard with **config alone** — point `PONTIFEX_CONNECTORS_CONFIG` at a connectors YAML file and the
-server registers the tools at startup, no domain code.
+server registers the tools at startup, no namespace code.
 
 For a backend that enforces its **own per-user permissions**, swap the service credential for OAuth
 token exchange ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693)) — Pontifex exchanges the caller's

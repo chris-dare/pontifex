@@ -4,7 +4,7 @@ Swap `from mcp.server.fastmcp import FastMCP` for
 `from pontifex_mcp import PontifexMCP` and existing code keeps working. The
 enterprise concerns are additive, all defaulting to zero-infra:
 
-  - `@tool(scope=...)`: declare a `resource:action` (or `domain:resource:action`)
+  - `@tool(scope=...)`: declare a `resource:action` (or `namespace:resource:action`)
     scope. Advisory until an auth backend is configured.
   - `auth=`: `ApiKeyAuth()` / `JwtAuth()` enable enforcement (read infra from env).
     Omitted → open mode (anonymous caller; HTTP binds localhost).
@@ -60,34 +60,34 @@ class JwtAuth:
 AuthBackend = ApiKeyAuth | JwtAuth
 
 
-def _parse_scope(scope: str | None, default_domain: str) -> tuple[str, str | None, str | None]:
-    """Resolve a `@tool(scope=...)` string to `(domain, resource, action)`.
+def _parse_scope(scope: str | None, default_namespace: str) -> tuple[str, str | None, str | None]:
+    """Resolve a `@tool(scope=...)` string to `(namespace, resource, action)`.
 
     `None` → no scope (the action triple is None/None, enforcement skipped).
-    `"resource:action"` → the app's own domain. `"domain:resource:action"` →
-    explicit domain.
+    `"resource:action"` → the app's own namespace. `"namespace:resource:action"` →
+    explicit namespace.
     """
     if not scope:
-        return (default_domain, None, None)
+        return (default_namespace, None, None)
     parts = scope.split(":")
     if len(parts) in (2, 3) and all(p.strip() for p in parts):
         if len(parts) == 2:
-            return (default_domain, parts[0], parts[1])
+            return (default_namespace, parts[0], parts[1])
         return (parts[0], parts[1], parts[2])
     raise ValueError(
         f"Invalid scope {scope!r}: expected 'resource:action' or "
-        "'domain:resource:action' with non-empty parts."
+        "'namespace:resource:action' with non-empty parts."
     )
 
 
-def _resolve_cache(spec: object, settings: CoreSettings, domain: str) -> Cache | None:
+def _resolve_cache(spec: object, settings: CoreSettings, namespace: str) -> Cache | None:
     """Resolve the `cache=` kwarg to a `Cache` (or None).
 
     - `None` / `False` → no cache
     - a `Cache` → used as-is
     - `True` / `"redis"` → `Cache` from `REDIS_URL` (required)
     - any other str → a Redis URL
-    Keys are namespaced by the app's domain.
+    Keys are namespaced by the app's namespace.
     """
     if spec is None or spec is False:
         return None
@@ -95,9 +95,9 @@ def _resolve_cache(spec: object, settings: CoreSettings, domain: str) -> Cache |
         return spec
     if spec is True or spec == "redis":
         url = require_url(settings.redis_url, "REDIS_URL", "cache")
-        return Cache(url, prefix=domain)
+        return Cache(url, prefix=namespace)
     if isinstance(spec, str):
-        return Cache(spec, prefix=domain)
+        return Cache(spec, prefix=namespace)
     raise TypeError(
         f"Unsupported cache spec {spec!r}: expected None, True, a Redis URL, or a Cache."
     )
@@ -129,7 +129,7 @@ class PontifexMCP(FastMCP):
             ),
         )
         super().__init__(name=name, instructions=instructions, **settings)
-        self._domain = name
+        self._namespace = name
         self._auth = auth
         self._audit: AuditWriter = resolve_audit_writer(audit)
         # Public so tools (which close over the app) can use it: `await mcp.cache.get(...)`.
@@ -150,7 +150,7 @@ class PontifexMCP(FastMCP):
         """Register a tool, folding in scope enforcement + audit.
 
         Mirrors FastMCP's `.tool()` signature; `scope` is the only addition —
-        a `resource:action` (or `domain:resource:action`) string. Omit it for an
+        a `resource:action` (or `namespace:resource:action`) string. Omit it for an
         advisory (unenforced) tool.
         """
         if callable(name):
@@ -159,14 +159,14 @@ class PontifexMCP(FastMCP):
                 "with scope=...), not @mcp.tool."
             )
         parent_tool = super().tool
-        domain = self._domain
+        namespace = self._namespace
         audit = self._audit
 
         def decorator(fn: Any) -> Any:
             tool_name = name or fn.__name__
-            scope_domain, resource, action = _parse_scope(scope, domain)
+            scope_namespace, resource, action = _parse_scope(scope, namespace)
             wrapped = tool_runtime(
-                domain=scope_domain,
+                namespace=scope_namespace,
                 tool_name=tool_name,
                 resource=resource,
                 action=action,
@@ -228,7 +228,7 @@ class PontifexMCP(FastMCP):
     ) -> DataSourceManager:
         """Generate one governed tool per allowlisted operation in an OpenAPI spec.
 
-        The tools register on this app with its audit sink and domain. `include`
+        The tools register on this app with its audit sink and namespace. `include`
         is an explicit allowlist of operations (e.g. ``["GET /orders/{id}"]``);
         mutating verbs additionally require ``allow_mutations=True``. Returns the
         `DataSourceManager` so you can fold it into a health check.
@@ -236,7 +236,7 @@ class PontifexMCP(FastMCP):
         return register_openapi_tools(
             self,
             spec=spec,
-            domain=self._domain,
+            namespace=self._namespace,
             base_url=base_url,
             audit=self._audit,
             include=include,
@@ -276,7 +276,7 @@ class PontifexMCP(FastMCP):
             self._require_auth_env(settings)
 
         app = build_http_app(
-            self._domain,
+            self._namespace,
             self,
             settings,
             self._readiness,

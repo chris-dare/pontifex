@@ -38,7 +38,7 @@ class AuditWriter(Protocol):
     async def write(
         self,
         *,
-        domain: str,
+        namespace: str,
         key_id: str,
         owner_id: str,
         owner_label: str,
@@ -83,7 +83,7 @@ class DbAuditWriter:
     async def write(
         self,
         *,
-        domain: str,
+        namespace: str,
         key_id: str,
         owner_id: str,
         owner_label: str,
@@ -103,7 +103,7 @@ class DbAuditWriter:
                 session.add(
                     AuditLogModel(
                         timestamp=datetime.now(UTC),
-                        domain=domain,
+                        namespace=namespace,
                         key_id=key_id,
                         owner_id=owner_id,
                         owner_label=owner_label,
@@ -140,7 +140,7 @@ class StdoutAuditWriter:
     async def write(
         self,
         *,
-        domain: str,
+        namespace: str,
         key_id: str,
         owner_id: str,
         owner_label: str,
@@ -156,7 +156,7 @@ class StdoutAuditWriter:
     ) -> None:
         logger.info(
             "tool_call",
-            domain=domain,
+            namespace=namespace,
             tool=tool_name,
             owner_id=owner_id,
             owner_label=owner_label,
@@ -181,7 +181,7 @@ class TeeAuditWriter:
     async def write(
         self,
         *,
-        domain: str,
+        namespace: str,
         key_id: str,
         owner_id: str,
         owner_label: str,
@@ -197,7 +197,7 @@ class TeeAuditWriter:
     ) -> None:
         for writer in self.writers:
             await writer.write(
-                domain=domain,
+                namespace=namespace,
                 key_id=key_id,
                 owner_id=owner_id,
                 owner_label=owner_label,

@@ -55,14 +55,14 @@ def _auth_failed() -> types.CallToolResult:
     )
 
 
-def _scope_denied(domain: str, resource: str, action: str) -> types.CallToolResult:
+def _scope_denied(namespace: str, resource: str, action: str) -> types.CallToolResult:
     return _error_result(
         ToolError(
             error_code="scope_denied",
             message=(
-                f"API key missing scope: {domain}:{resource}:{action}. "
-                f"Request a key with {domain}:{resource}:{action}, "
-                f"{domain}:*:{action}, or {domain}:*:*."
+                f"API key missing scope: {namespace}:{resource}:{action}. "
+                f"Request a key with {namespace}:{resource}:{action}, "
+                f"{namespace}:*:{action}, or {namespace}:*:*."
             ),
             status=403,
             retry=False,
@@ -120,7 +120,7 @@ def _ip_address(ctx: Any) -> str | None:
 
 def tool_runtime(
     *,
-    domain: str,
+    namespace: str,
     tool_name: str,
     resource: str | None,
     action: str | None,
@@ -129,8 +129,8 @@ def tool_runtime(
 ) -> Callable[[Callable[..., Awaitable[dict]]], Callable[..., Awaitable[Any]]]:
     """Wrap an MCP tool function.
 
-    `source_unavailable_exception` lets a domain plug in its own "all sources
-    failed" exception type (e.g., `AllSourcesUnavailable` in the GSE domain).
+    `source_unavailable_exception` lets a namespace plug in its own "all sources
+    failed" exception type (e.g., `AllSourcesUnavailable` in the GSE namespace).
 
     When `resource`/`action` are None the tool declared no scope, so the scope
     check is skipped (the call is still audited and still requires a resolved
@@ -166,10 +166,10 @@ def tool_runtime(
                 if (
                     resource is not None
                     and action is not None
-                    and not caller.can_use_tool(domain, resource, action)
+                    and not caller.can_use_tool(namespace, resource, action)
                 ):
                     error = "scope_denied"
-                    return _scope_denied(domain, resource, action)
+                    return _scope_denied(namespace, resource, action)
 
                 # Don't pass the injected ctx to a tool that didn't ask for one.
                 call_kwargs = (
@@ -201,7 +201,7 @@ def tool_runtime(
                 owner_label = caller.owner_label if caller else "Anonymous"
                 transport = caller.transport if caller else "unknown"
                 await audit.write(
-                    domain=domain,
+                    namespace=namespace,
                     key_id=key_id,
                     owner_id=owner_id,
                     owner_label=owner_label,

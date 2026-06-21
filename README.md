@@ -11,7 +11,7 @@ AI agents are ready to do real work against your systems. What the MCP SDK gives
 `pontifex-mcp` is that control layer. It turns your existing APIs, data stores, and internal services into **governed tools any AI agent can call** — and it runs on your own infrastructure, so your data never leaves your environment.
 
 - **Secure by default** — OAuth 2.1 JWTs *and* `sk_…` API keys; every tool call is authenticated, against any OIDC provider (Auth0, Entra, Clerk, Keycloak).
-- **Least-privilege scopes** — `domain:resource:action`, checked before every call. Callers can't widen their own access.
+- **Least-privilege scopes** — `namespace:resource:action`, checked before every call. Callers can't widen their own access.
 - **Auditable** — every call recorded: who, what, when, data source, cache hit, latency.
 - **Resilient** — per-caller rate limiting, adapter failover, circuit breaking.
 - **Observable** — Logfire / OpenTelemetry tracing and metrics wired in.
@@ -27,19 +27,19 @@ Requires Python 3.12+ — and nothing else to get started. A `PontifexMCP` serve
 
 ## This repository
 
-A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) holding the library and a demo domain:
+A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) holding the library and a worked example:
 
 ```
 core/pontifex_mcp/   The pontifex-mcp library — auth, scopes, audit, resilience, observability
                      (incl. migrations/ — the core schema, shipped in the wheel)
-domains/gse/         Ghana Stock Exchange — a worked example domain built on the library
+examples/gse/        Ghana Stock Exchange — a worked example built on the library
 alembic/             Monorepo migration config (the in-package core branch + the gse demo branch)
-tests/               core + domain tests
+tests/               core + example tests
 deploy/              Dockerfiles, fly.toml
 scripts/             Operational scripts (seed, export audit, health check)
 ```
 
-**Core has zero domain knowledge.** A domain is a self-contained folder under `domains/` — a settings class, one or more data adapters, and tools wrapped with `tool_runtime`. Adding one requires no changes to core. The GSE domain is the reference: see **[domains/gse/README.md](domains/gse/README.md)**.
+**Core has zero domain knowledge.** A namespace is a self-contained folder under `examples/` — a settings class, one or more data adapters, and tools wrapped with `tool_runtime`. Adding one requires no changes to core. The GSE namespace is the reference: see **[examples/gse/README.md](examples/gse/README.md)**.
 
 ## Develop
 
@@ -57,7 +57,7 @@ Lint with `uv run ruff check .`, format with `uv run ruff format .`, type-check 
 
 - **Docs site** — [https://chris-dare.github.io/pontifex/](https://chris-dare.github.io/pontifex/)
 - **Package README** — [core/README.md](core/README.md) (also rendered on [PyPI](https://pypi.org/project/pontifex-mcp/))
-- **Demo domain** — [domains/gse/README.md](domains/gse/README.md)
+- **Demo namespace** — [examples/gse/README.md](examples/gse/README.md)
 
 ## License
 

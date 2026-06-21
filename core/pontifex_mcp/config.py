@@ -21,7 +21,7 @@ def require_url(value: str, env_var: str, feature: str) -> str:
 
 
 class CoreSettings(BaseSettings):
-    """Settings shared by all domain modules."""
+    """Settings shared by all namespace modules."""
 
     host: str = "0.0.0.0"
     port: int = 8080
@@ -29,9 +29,9 @@ class CoreSettings(BaseSettings):
     log_level: str = "INFO"
 
     # The DB and Redis connections are shared infrastructure (one server, one
-    # database with a schema per domain; one Redis namespaced per domain), not
-    # domain settings — so, like `AUTH_*` / `PUBLIC_BASE_URL`, they read from
-    # bare, unprefixed env vars regardless of a domain's `env_prefix`.
+    # database with a schema per namespace; one Redis namespaced per namespace), not
+    # namespace settings — so, like `AUTH_*` / `PUBLIC_BASE_URL`, they read from
+    # bare, unprefixed env vars regardless of a namespace's `env_prefix`.
     #
     # Optional by default — empty is valid. A bare server (stdio, or HTTP with
     # no auth and stdout audit) needs neither. Each is required only when a
@@ -68,8 +68,8 @@ class CoreSettings(BaseSettings):
     # When empty, the discovery URL is derived from the request (local/dev).
     #
     # This is an infrastructure concern (where the app is deployed), not a
-    # domain one, so it reads from a bare `PUBLIC_BASE_URL` — the alias bypasses
-    # a domain's `env_prefix`, so the var name is the same for any MCP app.
+    # namespace one, so it reads from a bare `PUBLIC_BASE_URL` — the alias bypasses
+    # a namespace's `env_prefix`, so the var name is the same for any MCP app.
     public_base_url: str = Field(default="", validation_alias="PUBLIC_BASE_URL")
 
     # OAuth 2.1 / OIDC settings (provider-agnostic).  When `auth_jwks_url` is
@@ -86,8 +86,8 @@ class CoreSettings(BaseSettings):
     #                       Authorization server URL advertised by the
     #                       /.well-known/oauth-protected-resource document.
     # These are infrastructure-level (which IdP backs the deployment), not
-    # domain settings, so — like `public_base_url` — they read from bare,
-    # unprefixed `AUTH_*` env vars regardless of a domain's `env_prefix`.
+    # namespace settings, so — like `public_base_url` — they read from bare,
+    # unprefixed `AUTH_*` env vars regardless of a namespace's `env_prefix`.
     auth_jwks_url: str = Field(default="", validation_alias="AUTH_JWKS_URL")
     auth_issuer: str = Field(default="", validation_alias="AUTH_ISSUER")
     auth_audience: str = Field(default="", validation_alias="AUTH_AUDIENCE")
@@ -127,5 +127,5 @@ class CoreSettings(BaseSettings):
     # `populate_by_name` is left False (the default) on purpose: a field with a
     # `validation_alias` is then populated ONLY from that alias, never from
     # `env_prefix` + field name — so the bare `DATABASE_URL` / `REDIS_URL` are the
-    # sole source for those settings even under a domain's prefix.
+    # sole source for those settings even under a namespace's prefix.
     model_config = SettingsConfigDict(extra="ignore")

@@ -9,7 +9,7 @@ from typing import Any
 
 from gse_mcp.data import is_trading_hours
 
-DOMAIN = "gse"
+NAMESPACE = "gse"
 
 
 def envelope(*, source: str, cache_hit: bool, payload: dict[str, Any]) -> dict[str, Any]:

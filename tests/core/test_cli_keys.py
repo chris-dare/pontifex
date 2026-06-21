@@ -65,7 +65,7 @@ def test_create_rejects_empty_scopes(db):
 
 @pytest.mark.parametrize("bad_scope", ["balance:read", "*", "payments:balance:", "payments::read"])
 def test_create_rejects_malformed_scope(db, bad_scope):
-    """API-key scopes must be the full domain:resource:action triple. A 2-part
+    """API-key scopes must be the full namespace:resource:action triple. A 2-part
     scope or a bare `*` would mint a key that can never match a tool — reject it."""
     result = runner.invoke(app, ["keys", "create", "--owner", "u", "--scopes", bad_scope])
     assert result.exit_code == int(ExitCode.USER_ERROR)

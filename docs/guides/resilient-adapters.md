@@ -10,7 +10,7 @@ systems you wire yourself.)
 ## The protocol
 
 A `DataAdapter` is small. The core only needs three things to orchestrate it; your
-domain adds whatever methods the tool calls.
+namespace adds whatever methods the tool calls.
 
 ```python
 from typing import Protocol

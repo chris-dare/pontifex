@@ -5,7 +5,7 @@ errors returned when something is wrong.
 
 ## Scopes
 
-A scope is `domain:resource:action`, lowercase, colon-separated. For example,
+A scope is `namespace:resource:action`, lowercase, colon-separated. For example,
 `orders:order:read`.
 
 A tool declares the scope it requires. `scopes_match` checks the caller's scopes
@@ -13,13 +13,13 @@ against it, **case-insensitively**, accepting any of four patterns:
 
 | Pattern | Grants |
 | --- | --- |
-| `domain:*:*` | every resource and action in the domain |
-| `domain:*:action` | one action across every resource (e.g. read-only) |
-| `domain:resource:*` | every action on one resource |
-| `domain:resource:action` | exactly one action on one resource |
+| `namespace:*:*` | every resource and action in the namespace |
+| `namespace:*:action` | one action across every resource (e.g. read-only) |
+| `namespace:resource:*` | every action on one resource |
+| `namespace:resource:action` | exactly one action on one resource |
 
 A caller satisfies the check if **any** of their scopes matches one of these patterns
-for the required `domain` / `resource` / `action`. If none match, the call is rejected
+for the required `namespace` / `resource` / `action`. If none match, the call is rejected
 with `scope_denied`.
 
 ```python

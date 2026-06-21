@@ -29,7 +29,7 @@ def test_parse_scope():
 
 def test_bare_facade_defaults():
     mcp = PontifexMCP("payments")
-    assert mcp._domain == "payments"
+    assert mcp._namespace == "payments"
     assert mcp._auth is None
     assert isinstance(mcp._audit, StdoutAuditWriter)
 
@@ -177,7 +177,7 @@ def test_cache_resolution(monkeypatch):
 
     redis_app = PontifexMCP("payments", cache="redis://localhost:6379/0")
     assert isinstance(redis_app.cache, Cache)
-    assert redis_app.cache.prefix == "payments"  # namespaced by domain
+    assert redis_app.cache.prefix == "payments"  # namespaced by namespace
 
     existing = Cache("redis://localhost:6379/0", prefix="custom")
     assert PontifexMCP("payments", cache=existing).cache is existing

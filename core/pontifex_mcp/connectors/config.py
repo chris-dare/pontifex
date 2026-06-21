@@ -1,10 +1,10 @@
 """Declarative connector registration from a YAML config file.
 
-Lets a deployment onboard an API with config alone — no domain code. The file
+Lets a deployment onboard an API with config alone — no namespace code. The file
 shape (see deploy/connectors.example.yaml):
 
     connectors:
-      - domain: orders
+      - namespace: orders
         spec: https://api.internal/openapi.json
         base_url: https://api.internal
         auth:
@@ -86,7 +86,7 @@ class ConnectorAuth(BaseModel):
 
 
 class ConnectorEntry(BaseModel):
-    domain: str
+    namespace: str
     spec: str
     base_url: str
     include: list[str]
@@ -110,14 +110,14 @@ def register_connectors_from_config(
     audit: AuditWriter,
     path: str | Path,
 ) -> dict[str, DataSourceManager]:
-    """Register every connector in the config file; returns managers by domain."""
+    """Register every connector in the config file; returns managers by namespace."""
     config = load_connectors_config(path)
     managers: dict[str, DataSourceManager] = {}
     for entry in config.connectors:
-        managers[entry.domain] = register_openapi_tools(
+        managers[entry.namespace] = register_openapi_tools(
             mcp,
             spec=entry.spec,
-            domain=entry.domain,
+            namespace=entry.namespace,
             base_url=entry.base_url,
             audit=audit,
             include=entry.include,

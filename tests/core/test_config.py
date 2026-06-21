@@ -1,7 +1,7 @@
 """Env-var handling for the shared-infrastructure DB/Redis settings.
 
 `DATABASE_URL` / `REDIS_URL` (like `AUTH_*` / `PUBLIC_BASE_URL`) read from bare,
-unprefixed env vars even under a domain's `env_prefix`. They are **optional** —
+unprefixed env vars even under a namespace's `env_prefix`. They are **optional** —
 a bare server needs neither; each is required only when a feature that uses it
 is enabled, validated at backend construction via `require_url`.
 """
@@ -9,10 +9,10 @@ is enabled, validated at backend construction via `require_url`.
 import pytest
 from pontifex_mcp.config import require_url
 
-from domains.gse.gse_mcp.config import GSESettings
+from examples.gse.gse_mcp.config import GSESettings
 
 
-def test_reads_bare_names_under_domain_prefix(monkeypatch):
+def test_reads_bare_names_under_namespace_prefix(monkeypatch):
     """GSESettings sets env_prefix=GSE_MCP_, but these read the bare names."""
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://host/db")
     monkeypatch.setenv("REDIS_URL", "redis://host:6379/0")

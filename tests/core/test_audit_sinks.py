@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 _RECORD = dict(
-    domain="payments",
+    namespace="payments",
     key_id="k",
     owner_id="anonymous",
     owner_label="Anonymous",

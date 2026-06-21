@@ -54,7 +54,7 @@ if settings.transport == "stdio":
     app = None  # uvicorn entry not used
 else:
     app = create_mcp_http_app(
-        domain_name="gse",
+        namespace_name="gse",
         settings=settings,
         register_tools=_register,
         health_check=manager.health_summary,
@@ -66,7 +66,7 @@ def main() -> None:
     """Script entrypoint. Selects transport based on settings."""
     if settings.transport == "stdio":
         run_mcp_stdio(
-            domain_name="gse",
+            namespace_name="gse",
             settings=settings,
             register_tools=_register,
             instructions=_INSTRUCTIONS,

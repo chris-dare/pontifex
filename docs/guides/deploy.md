@@ -37,8 +37,8 @@ the flow on their own. No out-of-band config.
 !!! tip
 
     Keep the IdP/auth config and the DB/Redis URLs in bare, unprefixed variables.
-    They're the same for every server regardless of its domain. Only your
-    domain-specific settings carry your `env_prefix`.
+    They're the same for every server regardless of its namespace. Only your
+    namespace-specific settings carry your `env_prefix`.
 
 ## Probe health
 

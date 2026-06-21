@@ -42,13 +42,13 @@ class OpenAPIAdapter:
     def __init__(
         self,
         *,
-        domain: str,
+        namespace: str,
         base_url: str,
         auth: BackendAuth | None = None,
         timeout: float = 10.0,
         priority: int = 1,
     ) -> None:
-        self.name = f"openapi:{domain}"
+        self.name = f"openapi:{namespace}"
         self.priority = priority
         self.base_url = base_url.rstrip("/")
         self._auth = auth

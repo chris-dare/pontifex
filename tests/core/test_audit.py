@@ -8,7 +8,7 @@ from pontifex_mcp.models.base import AuditRecord
 def test_audit_record_serialization():
     rec = AuditRecord(
         timestamp=datetime.now(UTC),
-        domain="gse",
+        namespace="gse",
         key_id="k1",
         owner_id="o1",
         owner_label="Test",
@@ -20,6 +20,6 @@ def test_audit_record_serialization():
         response_ms=42,
     )
     dumped = rec.model_dump()
-    assert dumped["domain"] == "gse"
+    assert dumped["namespace"] == "gse"
     assert dumped["tool_name"] == "gse_get_live_prices"
     assert dumped["response_ms"] == 42

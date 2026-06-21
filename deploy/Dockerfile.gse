@@ -11,8 +11,8 @@ COPY .python-version ./
 # Core library
 COPY core/ core/
 
-# GSE domain
-COPY domains/gse/ domains/gse/
+# GSE namespace
+COPY examples/gse/ examples/gse/
 
 # Install (frozen) production dependencies for the gse-mcp package
 RUN uv sync --package gse-mcp --frozen --no-dev || uv sync --package gse-mcp --no-dev

@@ -32,7 +32,7 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          # GSE_MCP_* are the domain-prefixed settings; PUBLIC_BASE_URL, AUTH_*,
+          # GSE_MCP_* are the namespace-prefixed settings; PUBLIC_BASE_URL, AUTH_*,
           # DATABASE_URL and REDIS_URL are infrastructure-level, read without the
           # prefix (see CoreSettings).
           doppler secrets download --no-file --format env-no-quotes \

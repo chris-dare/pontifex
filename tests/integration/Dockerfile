@@ -9,7 +9,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 COPY pyproject.toml uv.lock .python-version ./
 COPY core/ core/
-COPY domains/gse/ domains/gse/
+COPY examples/gse/ examples/gse/
 RUN uv sync --package pontifex-mcp --frozen --no-dev || uv sync --package pontifex-mcp --no-dev
 
 COPY alembic/ alembic/

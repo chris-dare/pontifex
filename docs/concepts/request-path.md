@@ -60,7 +60,7 @@ flowchart LR
 
 ## Scopes
 
-Permissions take the form **`domain:resource:action`**. For example,
+Permissions take the form **`namespace:resource:action`**. For example,
 `orders:order:read`.
 
 A tool declares the scope it requires. The runtime checks it **before the handler
@@ -69,8 +69,8 @@ runs.**
 | Scope | Grants |
 | --- | --- |
 | `orders:order:read` | one tool |
-| `orders:*:read` | read across the whole domain |
-| `orders:*:*` | full access to the domain |
+| `orders:*:read` | read across the whole namespace |
+| `orders:*:*` | full access to the namespace |
 
 Wildcards let you grant breadth on purpose, not by accident. A caller gets scopes from
 their API key or their JWT claims and can never expand them at runtime. For the full
@@ -81,7 +81,7 @@ match rules, see [Errors & scopes](../reference/errors-and-scopes.md#scopes).
 `tool_runtime` is the decorator that wraps each handler. It applies the guarantees
 around your code, doing four things:
 
-1.  **Checks the scope.** No `domain:resource:action`? The call is denied with a
+1.  **Checks the scope.** No `namespace:resource:action`? The call is denied with a
     structured error.
 2.  **Runs your handler.** You return plain data. The one exception you raise is
     `InvalidInput`, for bad arguments.
@@ -90,7 +90,7 @@ around your code, doing four things:
 4.  **Normalizes errors.** Success passes through unchanged. A raised error becomes a
     structured `ToolError`, and no stack traces leak to the caller.
 
-Your handler stays small and domain-focused. The cross-cutting concerns live in the
+Your handler stays small and namespace-focused. The cross-cutting concerns live in the
 decorator, applied the same way to every tool.
 
 ## Data adapters

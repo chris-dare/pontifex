@@ -2,7 +2,7 @@
 
 Each selected operation becomes a FastMCP tool wrapped in `tool_runtime` —
 identical scope check, audit row, and error envelope to a hand-written tool.
-The scope is derived from the operation: `domain:resource:action`, where
+The scope is derived from the operation: `namespace:resource:action`, where
 `resource` is the first static path segment and `action` maps from the verb
 (GET→read, POST/PUT/PATCH→write, DELETE→delete).
 """
@@ -49,7 +49,7 @@ def register_openapi_tools(
     mcp: FastMCP,
     *,
     spec: str | dict[str, Any],
-    domain: str,
+    namespace: str,
     base_url: str,
     audit: AuditWriter,
     include: list[str],
@@ -78,7 +78,9 @@ def register_openapi_tools(
     unknown = set(overrides) - {op.key for op in operations}
     if unknown:
         raise ValueError(f"names entries match no included operation: {', '.join(sorted(unknown))}")
-    adapter = OpenAPIAdapter(domain=domain, base_url=base_url, auth=auth, timeout=timeout_seconds)
+    adapter = OpenAPIAdapter(
+        namespace=namespace, base_url=base_url, auth=auth, timeout=timeout_seconds
+    )
     manager = DataSourceManager(
         [adapter],
         cb_failure_threshold=cb_failure_threshold,
@@ -88,7 +90,7 @@ def register_openapi_tools(
         _register_operation(
             mcp,
             operation,
-            domain=domain,
+            namespace=namespace,
             manager=manager,
             audit=audit,
             name_override=overrides.get(operation.key),
@@ -100,12 +102,12 @@ def _register_operation(
     mcp: FastMCP,
     operation: Operation,
     *,
-    domain: str,
+    namespace: str,
     manager: DataSourceManager,
     audit: AuditWriter,
     name_override: str | None = None,
 ) -> None:
-    tool_name = f"{domain}_{_snake(name_override or operation.operation_id)}"
+    tool_name = f"{namespace}_{_snake(name_override or operation.operation_id)}"
     handler = _build_handler(operation, manager)
     handler.__name__ = tool_name
     description = _description(operation)
@@ -115,7 +117,7 @@ def _register_operation(
     handler.__annotations__ = annotations
 
     governed = tool_runtime(
-        domain=domain,
+        namespace=namespace,
         tool_name=tool_name,
         resource=operation.resource,
         action=operation.action,

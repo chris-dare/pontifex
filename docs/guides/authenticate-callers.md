@@ -49,13 +49,13 @@ print(f"Give this to the caller (shown once): {raw_key}")
 
 ### Scope it to the minimum
 
-Scopes are `domain:resource:action`. Grant the least that does the job.
+Scopes are `namespace:resource:action`. Grant the least that does the job.
 
 | Give the caller | If they should… |
 | --- | --- |
 | `orders:order:read` | call exactly one tool |
-| `orders:*:read` | read anything in the `orders` domain |
-| `orders:*:*` | do anything in the `orders` domain |
+| `orders:*:read` | read anything in the `orders` namespace |
+| `orders:*:*` | do anything in the `orders` namespace |
 
 Full rules and wildcard behavior: [Errors & scopes](../reference/errors-and-scopes.md#scopes).
 
@@ -97,7 +97,7 @@ No out-of-band setup.
 !!! note "Map roles to scopes"
 
     Your provider's roles and permissions need to land in the configured scopes claim
-    as `domain:resource:action` strings. If your provider supports a post-login hook,
+    as `namespace:resource:action` strings. If your provider supports a post-login hook,
     use it to grant new users a read-only role.
 
 ## Why both paths are safe

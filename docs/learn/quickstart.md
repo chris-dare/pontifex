@@ -91,13 +91,13 @@ To wire it into Claude Desktop, Cursor, Zed, or any other MCP client:
 Audit logging is already active. Every call writes a structured line to stdout:
 
 ```
-2026-06-20 13:32:14 [info     ] tool_call    cache_hit=False data_source=unknown delegated_audience=None domain=payments error=None ip_address=127.0.0.1 key_id=anonymous owner_id=anonymous owner_label=Anonymous params={} response_ms=0 tool=get_balance transport=http
+2026-06-20 13:32:14 [info     ] tool_call    cache_hit=False data_source=unknown delegated_audience=None namespace=payments error=None ip_address=127.0.0.1 key_id=anonymous owner_id=anonymous owner_label=Anonymous params={} response_ms=0 tool=get_balance transport=http
 ```
 
 `owner_id=anonymous` because no auth backend is active yet. `scope="balance:read"`
 declares what permission a caller needs. It's advisory here, enforced at step 4.
 
-Scopes use `resource:action`. Pontifex prepends the server name as the domain, so
+Scopes use `resource:action`. Pontifex prepends the server name as the namespace, so
 `"balance:read"` on a server named `"payments"` becomes `payments:balance:read`. When
 you issue API keys, use that full three-part form.
 
@@ -206,7 +206,7 @@ response wraps the upstream JSON in a governed envelope:
 }
 ```
 
-Tools are named `{domain}_{name}`. The `names` key sets the suffix; the domain prefix
+Tools are named `{namespace}_{name}`. The `names` key sets the suffix; the namespace prefix
 is always added.
 
 `include` is a strict allowlist. List the operations you want to expose; everything
@@ -290,7 +290,7 @@ Pass the key from your MCP client config:
 The auth middleware checks the key and its scopes **before your handler runs**. A caller
 without `payments:balance:read` gets a `403` (`scope_denied`) and never reaches
 `get_balance`. That's the full scope for `scope="balance:read"` on a server named
-`"payments"`; the domain is always prepended.
+`"payments"`; the namespace is always prepended.
 
 Once a request goes through, query the audit log to confirm the real caller identity:
 
@@ -401,7 +401,7 @@ pontifex-mcp db upgrade
 ```
 INFO  [alembic.runtime.migration] Running upgrade  -> core_0001, create api_keys
 INFO  [alembic.runtime.migration] Running upgrade core_0001 -> core_0002, create audit_log
-INFO  [alembic.runtime.migration] Running upgrade core_0002 -> core_0003, create domain_registry
+INFO  [alembic.runtime.migration] Running upgrade core_0002 -> core_0003, create namespace_registry
 INFO  [alembic.runtime.migration] Running upgrade core_0003 -> core_0004, add delegated_audience to audit_log
 Schema is up to date.
 ```

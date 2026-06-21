@@ -4,24 +4,25 @@ from mcp.server.fastmcp import Context, FastMCP
 from pontifex_mcp import AuditWriter, InvalidInput, tool_runtime
 
 from gse_mcp.data import AllSourcesUnavailable, GSEDataService
-from gse_mcp.tools._helpers import DOMAIN, envelope
+from gse_mcp.tools._helpers import NAMESPACE, envelope
 
 DESCRIPTION = (
-    "Get current price, change, and volume for a specific stock on the Ghana Stock Exchange."
+    "Get company profile, directors, EPS, DPS, and shares outstanding for a "
+    "GSE-listed equity. Data sourced from the equities registry."
 )
 
 
 def register(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> None:
-    @mcp.tool(name="gse_get_stock_price", description=DESCRIPTION, structured_output=False)
+    @mcp.tool(name="gse_get_company_info", description=DESCRIPTION, structured_output=False)
     @tool_runtime(
-        domain=DOMAIN,
-        tool_name="gse_get_stock_price",
-        resource="stock_price",
+        namespace=NAMESPACE,
+        tool_name="gse_get_company_info",
+        resource="company_info",
         action="read",
         audit=audit,
         source_unavailable_exception=AllSourcesUnavailable,
     )
-    async def gse_get_stock_price(
+    async def gse_get_company_info(
         symbol: str,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
@@ -29,12 +30,12 @@ def register(mcp: FastMCP, data_service: GSEDataService, audit: AuditWriter) -> 
         if not sym:
             raise InvalidInput("symbol is required.")
 
-        stock, source, cache_hit = await data_service.get_stock_price(sym)
-        if stock is None:
+        equity, source, cache_hit = await data_service.get_company_info(sym)
+        if equity is None:
             raise InvalidInput(f"Unknown GSE ticker: {sym}.")
 
         return envelope(
             source=source,
             cache_hit=cache_hit,
-            payload={"stock": stock.model_dump()},
+            payload={"equity": equity.model_dump()},
         )

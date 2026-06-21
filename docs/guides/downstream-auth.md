@@ -61,7 +61,7 @@ trust chain.
     A connector is *either* service-auth *or* user-auth, never both. API-key callers
     carry no token to exchange, so a `token_exchange` connector rejects them with a
     clear `invalid_input`. If a backend needs both modes, define two
-    connector entries with distinct domains.
+    connector entries with distinct namespaces.
 
 ### Provider differences
 

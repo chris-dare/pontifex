@@ -111,7 +111,7 @@ jobs:
             --config p/owasp-top-ten \
             --config p/secrets \
             --error \
-            core/ domains/
+            core/ examples/
 
   docker-smoke:
     name: Docker integration smoke test

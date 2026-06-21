@@ -63,13 +63,13 @@ if __name__ == "__main__":
 
 - **Always call the decorator with parentheses**: `@mcp.tool()` or `@mcp.tool(scope=...)`.
   Bare `@mcp.tool` raises a `TypeError`.
-- Tool handlers are `async def` and return JSON-serializable data (dicts, Pydantic models).
+- Tool handlers are typically `async def` and return JSON-serializable data (dicts, Pydantic models).
 - `scope="resource:action"` — the server's namespace is prepended, so
   `"balance:read"` on a `"payments"` server enforces `payments:balance:read`. Pass the full
   `"namespace:resource:action"` to target another namespace.
 - A tool with **no** `scope=` is unenforced (advisory).
-- Scopes are advisory over **stdio** (the local caller is always anonymous). Enforcement
-  happens over HTTP once an `auth=` backend is set.
+- For the `PontifexMCP.run()` facade, scopes are advisory over **stdio** (the local caller
+  is anonymous). Enforcement happens over HTTP once an `auth=` backend is set.
 
 ## Running
 

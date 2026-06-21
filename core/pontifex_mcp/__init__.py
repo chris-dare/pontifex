@@ -37,7 +37,7 @@ from pontifex_mcp.tool_runtime import InvalidInput, tool_runtime
 from pontifex_mcp.utils.circuit_breaker import CircuitBreaker
 from pontifex_mcp.utils.retry import async_retry
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 __all__ = [
     "ApiKeyAuth",

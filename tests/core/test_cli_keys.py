@@ -80,6 +80,16 @@ def test_create_duplicate_key_id_is_user_error(db):
     assert "already exists" in dup.output
 
 
+def test_create_duplicate_key_value_is_user_error(db):
+    """Reusing a plaintext (same hash) with a different key_id still conflicts.
+    The message must not claim the new, unused key_id already exists."""
+    base = ["keys", "create", "--owner", "u", "--scopes", "d:a:b", "--key-plaintext", "sk_x"]
+    assert runner.invoke(app, [*base, "--key-id", "key_a"]).exit_code == 0
+    dup = runner.invoke(app, [*base, "--key-id", "key_b"])
+    assert dup.exit_code == int(ExitCode.USER_ERROR)
+    assert "already exists" in dup.output
+
+
 def test_list_shows_keys_and_hides_revoked(db):
     runner.invoke(app, ["keys", "create", "--owner", "a", "--scopes", "d:x:y", "--key-id", "key_a"])
     runner.invoke(app, ["keys", "create", "--owner", "b", "--scopes", "d:x:y", "--key-id", "key_b"])

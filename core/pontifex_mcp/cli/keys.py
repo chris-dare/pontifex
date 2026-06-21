@@ -158,8 +158,11 @@ async def create(
             )
             await session.commit()
     except IntegrityError:
+        # Two unique constraints can trip this: the key_id (PK) or the key_hash
+        # (reusing a --key-plaintext). Name both rather than blame the key_id.
         fail(
-            f"A key with key_id '{kid}' already exists. Pass --key-id to choose another.",
+            f"A key with key_id '{kid}' or this key value already exists. "
+            "Use a different --key-id, or omit --key-plaintext to generate a fresh key.",
             ExitCode.USER_ERROR,
         )
     except (OSError, SQLAlchemyError) as exc:

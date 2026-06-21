@@ -118,6 +118,9 @@ def test_revoke_missing_key_is_user_error(db):
 
 
 class _FakeRedis:
+    """Stand-in for the redis.asyncio client: records the keys passed to delete()
+    so a test can assert the revoke cleared the right cache entry."""
+
     def __init__(self):
         self.deleted = []
 

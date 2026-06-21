@@ -14,8 +14,11 @@ there (and on any non-Postgres dialect).
 
 import hashlib
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+
+logger = structlog.get_logger(__name__)
 
 # A stable, app-specific 64-bit key derived from the schema name, so our lock
 # doesn't collide with another application's advisory locks in a shared database.
@@ -30,6 +33,20 @@ def lock_for_migration(connection: Connection) -> None:
 
     Call it inside the migration transaction, before applying migrations, so the
     lock is held for the whole upgrade and released when the transaction ends.
+
+    Tries without blocking first, so the common uncontended case is silent. Only
+    when another process holds the lock does it log and then wait — so a deploy
+    stuck behind a long-running migration is diagnosable, not a mystery.
     """
-    if connection.dialect.name == "postgresql":
-        connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK_KEY})
+    if connection.dialect.name != "postgresql":
+        return
+    acquired = connection.execute(
+        text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK_KEY}
+    ).scalar()
+    if acquired:
+        return
+    logger.info(
+        "migration_lock_wait",
+        msg="another process is running migrations; waiting for the advisory lock",
+    )
+    connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK_KEY})

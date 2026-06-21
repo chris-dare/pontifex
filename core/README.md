@@ -20,6 +20,8 @@ authentication, per-caller scopes, rate limits, and a full audit trail.
   per-user OAuth token exchange (RFC 8693) to the downstream.
 - **Built on the MCP SDK** — keep its tools, protocol, and transports; add the controls a production
   server needs.
+- **Coding-agent friendly** — bundles an official agent skill (`uvx library-skills`) so your coding
+  agent builds on guidance that matches your installed version.
 
 Asymmetric-only JWT validation, generic auth errors, and no token claim can escalate a caller.
 

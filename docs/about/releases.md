@@ -19,9 +19,9 @@ top level and you're on the supported path.
 
 ## Versioning
 
-Releases follow semantic versioning. Pontifex is in active development, and we work to
-keep upgrades boring. Most releases are additive — your tools, scopes, and API keys keep
-working untouched. When something genuinely has to break, it's deliberate: a minor version
+Releases follow semantic versioning. Pontifex is in active development, and we keep
+upgrades boring. Most releases add things and leave your tools, scopes, and API keys
+working as they were. A change that has to break compatibility lands in a minor version,
 with step-by-step migration in the [Upgrading](upgrading.md) guide. Pin the version you
 depend on.
 

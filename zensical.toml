@@ -20,6 +20,7 @@ nav = [
     { "Authenticate to your backend" = "guides/downstream-auth.md" },
     { "Build a resilient adapter" = "guides/resilient-adapters.md" },
     { "Deploy to production" = "guides/deploy.md" },
+    { "Use with your coding agent" = "guides/coding-agents.md" },
   ] },
   { "Concepts" = [
     { "How a request flows" = "concepts/request-path.md" },

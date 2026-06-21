@@ -90,6 +90,12 @@ flowchart TB
     A Python library you self-host. No third party sits in the request path. Apache-2.0
     licensed.
 
+-   :material-robot:{ .lg .middle } __Coding-agent friendly__
+
+    Your coding agent reads an official skill bundled with the package, so it builds with
+    pontifex-mcp on guidance that matches the version you installed.
+    [Use with your coding agent](guides/coding-agents.md)
+
 </div>
 
 ## Pontifex vs. the MCP SDK alone
@@ -126,14 +132,6 @@ infrastructure. Pontifex hardcodes nothing and phones nothing home.
 
 That is what lets your security and compliance teams sign off on "we are connecting AI
 to customer data."
-
-## When to skip it
-
-If you are shipping a single public tool over non-sensitive data, use the MCP SDK on
-its own. You do not need auth or an audit trail yet, and adding them buys you nothing.
-
-Pontifex pays off once a real system and real identity are involved. At that point,
-unauthenticated access is no longer acceptable.
 
 ## Where to next
 

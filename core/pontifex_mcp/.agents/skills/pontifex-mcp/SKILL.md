@@ -64,7 +64,7 @@ if __name__ == "__main__":
 - **Always call the decorator with parentheses**: `@mcp.tool()` or `@mcp.tool(scope=...)`.
   Bare `@mcp.tool` raises a `TypeError`.
 - Tool handlers are `async def` and return JSON-serializable data (dicts, Pydantic models).
-- `scope="resource:action"` — the server's namespace is prepended automatically, so
+- `scope="resource:action"` — the server's namespace is prepended, so
   `"balance:read"` on a `"payments"` server enforces `payments:balance:read`. Pass the full
   `"namespace:resource:action"` to target another namespace.
 - A tool with **no** `scope=` is unenforced (advisory).
@@ -196,9 +196,9 @@ mcp.add_openapi(
 
 ## Upgrading to 0.5 (the namespace rename)
 
-If you're updating code written against pontifex-mcp < 0.5, the **domain** concept was
-renamed to **namespace**. Scope *values*, API keys, tools, and auth config are unchanged —
-only terminology and a few identifiers. Three fixes:
+On pontifex-mcp < 0.5, the **domain** concept is now **namespace**. Your scope *values*,
+API keys, tools, and auth config stay the same; only terminology and a few identifiers
+move. Three fixes:
 
 - Run `pontifex-mcp db upgrade` (migration `core_0005` renames `audit_log.domain` →
   `namespace` and `domain_registry` → `namespace_registry`; existing rows preserved).

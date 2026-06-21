@@ -1,24 +1,23 @@
 # Upgrading
 
-What you need to do when a release changes something you depend on. This page covers
-**breaking changes only** — for the full list of what shipped in each version, see the
-[**release notes on GitHub →**](https://github.com/chris-dare/pontifex/releases) (that's
-the changelog; this page is the migration steps).
+The steps to take when a release changes something you depend on. This page lists
+breaking changes only. For everything that shipped in a version, read the
+[release notes on GitHub](https://github.com/chris-dare/pontifex/releases).
 
-Pontifex is pre-1.0, so pin the version you depend on and read this page before bumping a
+Pontifex is pre-1.0, so pin the version you depend on and read this page before you bump a
 minor.
 
 ---
 
-## 0.5.0 — `domain` → `namespace`
+## 0.5.0: domain → namespace
 
 0.5.0 renames the **domain** concept to **namespace**: the first segment of a scope
-(`namespace:resource:action`) and the per-namespace schema and registry. A server is now
-described as being *namespaced*, rather than as "a domain".
+(`namespace:resource:action`), plus the per-namespace schema and registry. You namespace a
+server now.
 
-**Your scope values, API keys, tools, and auth configuration do not change.** Existing
-keys keep authenticating exactly as before — the rename is terminology plus a few
-identifiers. Three things need updating:
+Your scope values, API keys, tools, and auth configuration stay the same. Existing keys
+keep authenticating as before. The rename touches terminology and three things you may
+need to update.
 
 ### 1. Run the migration
 
@@ -26,13 +25,12 @@ identifiers. Three things need updating:
 pontifex-mcp db upgrade
 ```
 
-This applies `core_0005`, which renames `audit_log.domain` → `audit_log.namespace` and the
-`domain_registry` table → `namespace_registry`. Existing rows are **preserved** — these are
-column and table renames, not drop-and-recreate. On the SQLite floor the schema is rebuilt
-from the models, with the same result.
+`core_0005` renames the `audit_log.domain` column to `namespace` and the `domain_registry`
+table to `namespace_registry`. It renames in place, so existing rows survive. On the SQLite
+floor, `db upgrade` rebuilds the schema from the models and lands in the same place.
 
-If you read the audit table directly (dashboards, exports, ad-hoc SQL), update any
-reference to the `domain` column → `namespace`.
+If you query the audit table from dashboards, exports, or ad-hoc SQL, rename `domain` to
+`namespace` there too.
 
 ### 2. Rename the connector YAML field
 
@@ -47,26 +45,26 @@ connectors:
     include: ["GET /orders/{id}"]
 ```
 
-Scopes are still derived as `namespace:resource:action`.
+Pontifex still derives scopes as `namespace:resource:action`.
 
-### 3. Update the renamed import (only if you used it)
+### 3. Update the renamed import
 
 ```python
 from pontifex_mcp.models import NamespaceRegistryModel   # was: DomainRegistryModel
 ```
 
-Most users never import this — it's a deeper-path internal, not part of the top-level
-public API.
+Most code never imports this. It lives on a deeper path that the public API marks as
+internal.
 
-### What did not change
+### What stays the same
 
-- `PontifexMCP("payments")` and `@mcp.tool(scope="balance:read")` — same signatures.
+- `PontifexMCP("payments")` and `@mcp.tool(scope="balance:read")` keep their signatures.
 - `ApiKeyAuth` / `JwtAuth` and the `AUTH_*` / `DATABASE_URL` / `REDIS_URL` env vars.
 - The `pontifex-mcp` CLI commands and flags.
-- **Every stored scope value** (`payments:balance:read`, `gse:*:*`, …) and every issued
-  API key.
+- Every stored scope value (`payments:balance:read`, `gse:*:*`, and the rest) and every
+  issued API key.
 
 !!! note "Contributors"
-    The worked example moved from `domains/` to `examples/` (and `tests/domains` →
-    `tests/examples`, `alembic/domains` → `alembic/examples`). This affects the repo
-    layout only — not the published `pontifex-mcp` package or the `gse-mcp` module name.
+    The worked example moved from `domains/` to `examples/`, along with `tests/domains` and
+    `alembic/domains`. This changes the repo layout. The published `pontifex-mcp` package
+    and the `gse-mcp` module name stay the same.

@@ -1062,7 +1062,7 @@ A key with scopes `["gse:*:read", "gfi:bond_yields:read"]` can read any GSE data
 
 ### 11.3 API Key Format and Storage
 
-**Key format:** `sk_<env>_` prefix + 32 random bytes, base62-encoded — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The `pontifex-mcp keys create` CLI (or an upstream platform) generates the key, stores its SHA-256 hash in `pontifex_mcp_core.api_keys` along with the scopes, and shows the plaintext once.
+**Key format:** `sk_<env>_` prefix + a high-entropy URL-safe random token — `sk_live_` for production, `sk_uat_` / `sk_test_` for ephemeral and CI environments. All variants share the `sk_` discriminator the middleware routes on (§11.10). The `pontifex-mcp keys create` CLI (or an upstream platform) generates the key, stores its SHA-256 hash in `pontifex_mcp_core.api_keys` along with the scopes, and shows the plaintext once.
 
 **Key record:**
 
@@ -1617,9 +1617,9 @@ CREATE TABLE gse.data_quality_log (
 
 ### 14.5 Schema Permissions
 
-Two classes of runtime role for `pontifex-mcp` itself, plus a separate provisioning credential. Key provisioning — whether the `pontifex-mcp keys` CLI or an upstream platform — runs with a credential that holds `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. The domain service role deliberately does **not**: a running domain server can read keys to authenticate callers but cannot mint or alter them, so a compromised server can't forge credentials.
+Two classes of runtime role for `pontifex-mcp` itself, plus a separate provisioning credential. Key provisioning — whether the `pontifex-mcp keys` CLI or an upstream platform — runs with a credential that holds `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. The domain service role holds no such grant beyond touching `last_used_at`: a running domain server reads keys to authenticate callers but cannot mint them or change their scopes, hashes, or activation, so a compromised server can't forge or escalate credentials.
 
-- **Domain services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys, write `pontifex_mcp_core.audit_log`, full access to their own domain schema. No write access to `api_keys`.
+- **Domain services** (`mcp_gse_service`, etc.): Read `pontifex_mcp_core.api_keys` to resolve keys (with a column-scoped `UPDATE` on `last_used_at` only), write `pontifex_mcp_core.audit_log`, full access to their own domain schema. No other write access to `api_keys`.
 - **Provisioning** (the `keys` CLI, or an upstream platform using its own credentials): `INSERT`/`UPDATE` on `pontifex_mcp_core.api_keys`. Run from an operator context, not the serving path.
 - **Analytics** (`mcp_analytics`): Read-only on everything for dashboards and reporting.
 

@@ -381,8 +381,8 @@ is `None`.
 ## 6. Move to Postgres
 
 The SQLite file got you this far with zero setup. Production wants Postgres: concurrent
-writers, real indexes, a shared audit trail across replicas. The switch is one env var
-and the same `db upgrade` command. Your `main.py` doesn't change.
+writers, real indexes, one key store shared across every replica. The switch is one env
+var and the same `db upgrade` command. Your `main.py` doesn't change.
 
 Start Postgres and point `DATABASE_URL` at it:
 

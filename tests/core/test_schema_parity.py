@@ -28,16 +28,22 @@ pytestmark = pytest.mark.skipif(
     reason="set TEST_DATABASE_URL (a throwaway Postgres) to run the schema-parity guard",
 )
 
-_TABLES = ["api_keys", "audit_log", "domain_registry"]
+# The tables both sides must own. Anchoring against this (rather than a list we
+# iterate) means an empty/half-built schema can't pass vacuously, and adding a
+# table to the models without a migration — or vice versa — fails until someone
+# updates this set on purpose.
+_EXPECTED_TABLES = {"api_keys", "audit_log", "domain_registry"}
 _SCHEMA = "pontifex_mcp_core"
 
 
 def _structure(sync_conn, schema):
-    """The behavior-affecting shape of each table: columns + nullability, the
-    primary key, and the unique constraints/indexes (as column-sets)."""
+    """The behavior-affecting shape of each table the schema actually has:
+    columns + nullability, the primary key, and the unique constraints/indexes
+    (as column-sets). Tables are discovered, not assumed, so a missing or extra
+    table shows up as a table-set difference."""
     insp = inspect(sync_conn)
     out = {}
-    for table in _TABLES:
+    for table in insp.get_table_names(schema=schema):
         columns = {c["name"]: bool(c["nullable"]) for c in insp.get_columns(table, schema=schema)}
         pk = frozenset(
             insp.get_pk_constraint(table, schema=schema).get("constrained_columns") or []
@@ -92,7 +98,12 @@ def test_sqlite_and_postgres_schemas_match(monkeypatch):
     _upgrade_postgres()
     postgres_struct = asyncio.run(_postgres_structure(pg_url))
 
-    for table in _TABLES:
+    # Both sides own exactly the expected tables — catches a model added without
+    # a migration (or the reverse), and an empty schema that would pass vacuously.
+    assert set(sqlite_struct) == _EXPECTED_TABLES, "SQLite tables drifted from the expected set"
+    assert set(postgres_struct) == _EXPECTED_TABLES, "Postgres tables drifted from the expected set"
+
+    for table in _EXPECTED_TABLES:
         s, p = sqlite_struct[table], postgres_struct[table]
         assert s["columns"] == p["columns"], f"{table}: columns/nullability drifted"
         assert s["pk"] == p["pk"], f"{table}: primary key drifted"

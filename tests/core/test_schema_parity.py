@@ -37,14 +37,25 @@ _SCHEMA = "pontifex_mcp_core"
 
 
 def _structure(sync_conn, schema):
-    """The behavior-affecting shape of each table the schema actually has:
-    columns + nullability, the primary key, and the unique constraints/indexes
-    (as column-sets). Tables are discovered, not assumed, so a missing or extra
-    table shows up as a table-set difference."""
+    """The behavior-affecting shape of each table the schema actually has.
+
+    Tables are discovered, not assumed, so a missing/extra table shows up. Per
+    table we capture columns + nullability, the primary key, the unique
+    constraints/indexes (as column-sets), the *presence* of a server default on
+    each non-PK column, and the foreign keys.
+
+    We compare portable intent, not backend SQL text: we don't compare rendered
+    column types (they differ by design via `.with_variant()`), nor the default's
+    literal SQL (`now()` vs `CURRENT_TIMESTAMP`), only whether a default exists.
+    PK columns are excluded from the default check — a Postgres serial PK has a
+    `nextval(...)` default while a SQLite rowid PK has none, which is a dialect
+    difference, not drift.
+    """
     insp = inspect(sync_conn)
     out = {}
     for table in insp.get_table_names(schema=schema):
-        columns = {c["name"]: bool(c["nullable"]) for c in insp.get_columns(table, schema=schema)}
+        cols = insp.get_columns(table, schema=schema)
+        columns = {c["name"]: bool(c["nullable"]) for c in cols}
         pk = frozenset(
             insp.get_pk_constraint(table, schema=schema).get("constrained_columns") or []
         )
@@ -56,7 +67,22 @@ def _structure(sync_conn, schema):
             for i in insp.get_indexes(table, schema=schema)
             if i["unique"]
         }
-        out[table] = {"columns": columns, "pk": pk, "unique": unique}
+        has_default = {c["name"]: c.get("default") is not None for c in cols if c["name"] not in pk}
+        foreign_keys = {
+            (
+                frozenset(fk["constrained_columns"]),
+                fk["referred_table"],
+                frozenset(fk["referred_columns"]),
+            )
+            for fk in insp.get_foreign_keys(table, schema=schema)
+        }
+        out[table] = {
+            "columns": columns,
+            "pk": pk,
+            "unique": unique,
+            "has_default": has_default,
+            "foreign_keys": foreign_keys,
+        }
     return out
 
 
@@ -86,8 +112,9 @@ async def _postgres_structure(url):
 
 
 def test_sqlite_and_postgres_schemas_match(monkeypatch):
-    """SQLite (create_all) and Postgres (migrations) agree on columns,
-    nullability, primary keys, and unique constraints — for every table."""
+    """SQLite (create_all) and Postgres (migrations) agree, for every table, on
+    columns, nullability, primary keys, unique constraints, the presence of a
+    server default on each non-PK column, and foreign keys."""
     pg_url = os.environ["TEST_DATABASE_URL"]
 
     # Sync test on purpose: `_upgrade_postgres` runs its own event loop, so it
@@ -108,3 +135,5 @@ def test_sqlite_and_postgres_schemas_match(monkeypatch):
         assert s["columns"] == p["columns"], f"{table}: columns/nullability drifted"
         assert s["pk"] == p["pk"], f"{table}: primary key drifted"
         assert s["unique"] == p["unique"], f"{table}: unique constraints drifted"
+        assert s["has_default"] == p["has_default"], f"{table}: server-default presence drifted"
+        assert s["foreign_keys"] == p["foreign_keys"], f"{table}: foreign keys drifted"

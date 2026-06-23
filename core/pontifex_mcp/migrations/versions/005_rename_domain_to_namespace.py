@@ -12,7 +12,7 @@ Revises: core_0004
 from alembic import op
 
 revision = "core_0005"
-down_revision = "core_0004"
+down_revision = "core_0004b"
 branch_labels = None
 depends_on = None
 
